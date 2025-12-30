@@ -33,40 +33,20 @@ cp .env.example .env
 Edit `.env` and configure the following variables:
 
 ```env
-# Application
-NODE_ENV=development
-PORT=4000
-API_PREFIX=api/v1
 
-# Supabase (see Supabase Setup section)
+# ===========================================
+# SUPABASE CONFIGURATION
+# ===========================================
+
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
-# JWT
-JWT_SECRET=your_jwt_secret_key
-JWT_EXPIRES_IN=15m
-JWT_REFRESH_SECRET=your_jwt_refresh_secret_key
-JWT_REFRESH_EXPIRES_IN=7d
+# ===========================================
+# PORT
+# ===========================================
 
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-# Stellar
-STELLAR_NETWORK=testnet
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
-SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
-STELLAR_SECRET_KEY=your_stellar_secret_key
-
-# Sentry (optional for local development)
-SENTRY_DSN=
-SENTRY_ENVIRONMENT=development
-
-# Throttler
-THROTTLE_TTL=60
-THROTTLE_LIMIT=10
+PORT=4000
 ```
 
 ### 4. Supabase Setup
