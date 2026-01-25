@@ -23,7 +23,7 @@
 
 ## 📖 About
 
-TrustUp API is a backend service that orchestrates BNPL (Buy Now Pay Later) transactions on the Stellar blockchain. Built with NestJS and Fastify, it provides a fast, scalable off-chain layer that enhances user experience while maintaining blockchain decentralization.
+TrustUp API is a production-ready backend service that orchestrates BNPL (Buy Now Pay Later) transactions on the Stellar blockchain. Built with NestJS and Fastify, it provides a fast, scalable off-chain layer that enhances user experience while maintaining blockchain decentralization.
 
 ### Key Features
 
