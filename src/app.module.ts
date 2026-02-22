@@ -5,9 +5,11 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { ReputationModule } from './modules/reputation/reputation.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
+    // ConfigModule must be first — SupabaseService and other providers depend on it
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([
       {
@@ -18,7 +20,9 @@ import { ReputationModule } from './modules/reputation/reputation.module';
     AuthModule,
     HealthModule,
     ReputationModule,
+    UsersModule,
   ],
+  controllers: [],
   providers: [
     {
       provide: APP_GUARD,
@@ -26,5 +30,6 @@ import { ReputationModule } from './modules/reputation/reputation.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }
+
 
