@@ -21,10 +21,26 @@ export class NotificationsService {
     const offset = query.offset ?? 0;
     const client = this.supabaseService.getServiceRoleClient();
 
+    // Get user_id from wallet
+    const { data: user, error: userError } = await client
+      .from('users')
+      .select('id')
+      .eq('wallet_address', wallet)
+      .single();
+
+    if (userError || !user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    const userId = user.id;
+
     let notificationsQuery = client
       .from('notifications')
       .select('id, type, title, message, data, is_read, created_at, read_at', { count: 'exact' })
-      .eq('user_wallet', wallet)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -42,7 +58,7 @@ export class NotificationsService {
     const { count: unreadCount, error: unreadError } = await client
       .from('notifications')
       .select('id', { count: 'exact', head: true })
-      .eq('user_wallet', wallet)
+      .eq('user_id', userId)
       .eq('is_read', false);
 
     if (unreadError) {
@@ -75,9 +91,25 @@ export class NotificationsService {
   async markAsRead(wallet: string, notificationId: string): Promise<MarkAsReadResponseDto> {
     const client = this.supabaseService.getServiceRoleClient();
 
+    // Get user_id from wallet
+    const { data: user, error: userError } = await client
+      .from('users')
+      .select('id')
+      .eq('wallet_address', wallet)
+      .single();
+
+    if (userError || !user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    const userId = user.id;
+
     const { data: notification, error: fetchError } = await client
       .from('notifications')
-      .select('id, user_wallet, is_read')
+      .select('id, user_id, is_read')
       .eq('id', notificationId)
       .single();
 
@@ -88,7 +120,7 @@ export class NotificationsService {
       });
     }
 
-    if (notification.user_wallet !== wallet) {
+    if (notification.user_id !== userId) {
       throw new ForbiddenException({
         code: 'NOTIFICATION_FORBIDDEN',
         message: 'You do not have permission to update this notification',
@@ -116,11 +148,27 @@ export class NotificationsService {
   async markAllAsRead(wallet: string): Promise<MarkAsReadResponseDto> {
     const client = this.supabaseService.getServiceRoleClient();
 
+    // Get user_id from wallet
+    const { data: user, error: userError } = await client
+      .from('users')
+      .select('id')
+      .eq('wallet_address', wallet)
+      .single();
+
+    if (userError || !user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    const userId = user.id;
+
     const now = new Date().toISOString();
     const { data, error } = await client
       .from('notifications')
       .update({ is_read: true, read_at: now, updated_at: now })
-      .eq('user_wallet', wallet)
+      .eq('user_id', userId)
       .eq('is_read', false)
       .select('id');
 

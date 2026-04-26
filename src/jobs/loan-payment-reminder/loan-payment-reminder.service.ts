@@ -29,7 +29,7 @@ export class LoanPaymentReminderService implements OnModuleInit {
       'send-payment-reminders',
       {},
       {
-        repeat: { pattern: '0 9 * * *', utcOffset: 0 },
+        repeat: { pattern: '0 9 * * *', offset: 0 },
         removeOnComplete: { count: 10 },
         removeOnFail: { count: 50 },
       },
