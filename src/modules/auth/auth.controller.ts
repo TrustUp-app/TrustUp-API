@@ -1,6 +1,7 @@
 import { 
   Controller, 
   Post, 
+  Delete,
   Body, 
   HttpCode, 
   HttpStatus, 
@@ -21,6 +22,8 @@ import { NonceResponseDto } from './dto/nonce-response.dto';
 import { VerifyRequestDto } from './dto/verify-request.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { RegisterRequestDto } from './dto/register-request.dto';
+import { RefreshTokenDto, RefreshTokenSchema } from './dto/refresh-token.dto';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
 class OptionalProfileImageInterceptor implements NestInterceptor {
   intercept(_context: ExecutionContext, next: CallHandler) {
@@ -109,5 +112,45 @@ export class AuthController {
   async verify(@Body() dto: VerifyRequestDto): Promise<AuthResponseDto> {
     await this.authService.verifySignature(dto);
     return this.authService.generateTokens(dto.wallet);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Refresh JWT access token using a refresh token',
+    description:
+      'Validates the refresh token. If valid, deletes the old session and generates a new access token (15 min) and a new refresh token (7 days). Aligns with refresh token rotation.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tokens refreshed successfully',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request body or validation failed' })
+  @ApiResponse({ status: 401, description: 'Invalid, expired, or revoked refresh token' })
+  async refresh(
+    @Body(new ZodValidationPipe(RefreshTokenSchema)) dto: RefreshTokenDto,
+  ): Promise<AuthResponseDto> {
+    return this.authService.refreshTokens(dto.refreshToken);
+  }
+
+  @Delete('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Log out user by revoking the refresh token',
+    description:
+      'Validates the refresh token and deletes the associated session from the database. Logout is possible even when the access token is expired.',
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'User successfully logged out',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request body or validation failed' })
+  @ApiResponse({ status: 401, description: 'Invalid refresh token signature' })
+  async logout(
+    @Body(new ZodValidationPipe(RefreshTokenSchema)) dto: RefreshTokenDto,
+  ): Promise<void> {
+    await this.authService.logout(dto.refreshToken);
   }
 }

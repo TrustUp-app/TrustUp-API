@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../../../../src/modules/auth/auth.service';
 import { SupabaseService } from '../../../../src/database/supabase.client';
 import { UsersRepository } from '../../../../src/database/repositories/users.repository';
+import { SessionsRepository } from '../../../../src/database/repositories/sessions.repository';
 
 // Mock Stellar SDK to avoid real crypto operations in unit tests
 jest.mock('stellar-sdk', () => ({
@@ -41,6 +42,14 @@ describe('AuthService', () => {
     createProfile: jest.fn(),
   };
 
+  const mockSessionsRepository = {
+    findByHash: jest.fn(),
+    create: jest.fn(),
+    delete: jest.fn(),
+    deleteByHash: jest.fn(),
+    revokeFamily: jest.fn(),
+  };
+
   const validWallet = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
 
   beforeEach(async () => {
@@ -51,6 +60,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: UsersRepository, useValue: mockUsersRepository },
+        { provide: SessionsRepository, useValue: mockSessionsRepository },
       ],
     }).compile();
 
@@ -61,6 +71,8 @@ describe('AuthService', () => {
     mockJwtService.sign.mockReturnValue('mock.jwt.token');
     mockConfigService.get.mockReturnValue('mock-secret');
     mockFrom.mockReturnValue({ insert: mockInsert });
+    mockSessionsRepository.create.mockResolvedValue({ id: 'session-uuid' });
+    mockSessionsRepository.findByHash.mockResolvedValue(null);
     (StrKey.isValidEd25519PublicKey as jest.Mock).mockReturnValue(true);
   });
 
@@ -259,7 +271,7 @@ describe('AuthService', () => {
 
     function setupMocks({
       userResult = { data: defaultUserRecord, error: null },
-      sessionResult = { error: null },
+      sessionsShouldFail = false,
     } = {}) {
       mockFrom.mockImplementation((table: string) => {
         if (table === 'users') {
@@ -272,11 +284,18 @@ describe('AuthService', () => {
           chain.select.mockReturnValue(chain);
           return chain;
         }
-        if (table === 'sessions') {
-          return { insert: jest.fn().mockResolvedValue(sessionResult) };
-        }
         return { insert: mockInsert };
       });
+      if (sessionsShouldFail) {
+        mockSessionsRepository.create.mockRejectedValue(
+          new InternalServerErrorException({
+            code: 'DATABASE_SESSION_CREATE_FAILED',
+            message: 'Failed to create session.',
+          }),
+        );
+      } else {
+        mockSessionsRepository.create.mockResolvedValue({ id: 'session-uuid' });
+      }
     }
 
     it('should return accessToken, refreshToken, expiresIn and tokenType', async () => {
@@ -326,7 +345,7 @@ describe('AuthService', () => {
     });
 
     it('should throw InternalServerErrorException (DATABASE_SESSION_CREATE_FAILED) when session insert fails', async () => {
-      setupMocks({ sessionResult: { error: { message: 'DB error' } } });
+      setupMocks({ sessionsShouldFail: true });
 
       await expect(service.generateTokens(validWallet)).rejects.toMatchObject({
         response: { code: 'DATABASE_SESSION_CREATE_FAILED' },
@@ -423,6 +442,136 @@ describe('AuthService', () => {
       await expect(service.register(registerDto)).rejects.toMatchObject({
         response: { code: 'AUTH_USERNAME_TAKEN' },
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // refreshTokens
+  // ---------------------------------------------------------------------------
+  describe('refreshTokens', () => {
+    const validRefreshToken = 'mock.refresh.token';
+    const mockPayload = { wallet: validWallet, type: 'refresh' };
+    const mockSession = {
+      id: 'session-uuid',
+      user_id: 'user-uuid',
+      refresh_token_hash: 'hashed_token',
+      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      token_family: 'family-uuid',
+      revoked_at: null,
+    };
+    const mockUser = { id: 'user-uuid', wallet_address: validWallet, status: 'active' };
+
+    beforeEach(() => {
+      mockJwtService.verifyAsync = jest.fn().mockResolvedValue(mockPayload);
+      mockSessionsRepository.findByHash.mockResolvedValue(mockSession);
+      mockUsersRepository.findByWallet.mockResolvedValue(mockUser);
+    });
+
+    it('should refresh tokens successfully', async () => {
+      const result = await service.refreshTokens(validRefreshToken);
+
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result.expiresIn).toBe(900);
+      expect(mockSessionsRepository.delete).toHaveBeenCalledWith(mockSession.id);
+      expect(mockSessionsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: mockUser.id,
+          tokenFamily: mockSession.token_family,
+        }),
+      );
+    });
+
+    it('should throw UnauthorizedException on invalid token signature', async () => {
+      mockJwtService.verifyAsync.mockRejectedValue(new Error('Invalid signature'));
+
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toMatchObject({
+        response: { code: 'AUTH_TOKEN_INVALID' },
+      });
+    });
+
+    it('should throw UnauthorizedException on expired JWT refresh token signature', async () => {
+      const expiredError = new Error('JWT Expired');
+      expiredError.name = 'TokenExpiredError';
+      mockJwtService.verifyAsync.mockRejectedValue(expiredError);
+
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toMatchObject({
+        response: { code: 'AUTH_TOKEN_EXPIRED' },
+      });
+    });
+
+    it('should throw UnauthorizedException if session is not found in DB', async () => {
+      mockSessionsRepository.findByHash.mockResolvedValue(null);
+
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toMatchObject({
+        response: { code: 'AUTH_TOKEN_REVOKED' },
+      });
+    });
+
+    it('should throw UnauthorizedException and revoke family if session is already revoked', async () => {
+      mockSessionsRepository.findByHash.mockResolvedValue({
+        ...mockSession,
+        revoked_at: new Date().toISOString(),
+      });
+
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(mockSessionsRepository.revokeFamily).toHaveBeenCalledWith(mockSession.token_family);
+    });
+
+    it('should throw UnauthorizedException if session is expired in DB', async () => {
+      mockSessionsRepository.findByHash.mockResolvedValue({
+        ...mockSession,
+        expires_at: new Date(Date.now() - 3600000).toISOString(),
+      });
+
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(mockSessionsRepository.delete).toHaveBeenCalledWith(mockSession.id);
+    });
+
+    it('should throw UnauthorizedException if user is blocked', async () => {
+      mockUsersRepository.findByWallet.mockResolvedValue({
+        ...mockUser,
+        status: 'blocked',
+      });
+
+      await expect(service.refreshTokens(validRefreshToken)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // logout
+  // ---------------------------------------------------------------------------
+  describe('logout', () => {
+    const validRefreshToken = 'mock.refresh.token';
+    const mockPayload = { wallet: validWallet, type: 'refresh' };
+
+    beforeEach(() => {
+      mockJwtService.verifyAsync = jest.fn().mockResolvedValue(mockPayload);
+    });
+
+    it('should log out successfully by deleting session from DB', async () => {
+      await service.logout(validRefreshToken);
+
+      expect(mockSessionsRepository.deleteByHash).toHaveBeenCalled();
+    });
+
+    it('should allow logout even if JWT refresh token is expired', async () => {
+      const expiredError = new Error('JWT Expired');
+      expiredError.name = 'TokenExpiredError';
+      mockJwtService.verifyAsync.mockRejectedValue(expiredError);
+
+      await service.logout(validRefreshToken);
+
+      expect(mockSessionsRepository.deleteByHash).toHaveBeenCalled();
+    });
+
+    it('should throw UnauthorizedException if JWT signature is invalid', async () => {
+      mockJwtService.verifyAsync.mockRejectedValue(new Error('Invalid signature'));
+
+      await expect(service.logout(validRefreshToken)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

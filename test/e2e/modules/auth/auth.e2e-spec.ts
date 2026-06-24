@@ -512,4 +512,115 @@ describe('AuthController (e2e)', () => {
       expect(new Date(session.expires_at).getTime()).toBeGreaterThan(Date.now());
     });
   });
+
+  describe('Refresh and Logout Flows (E2E)', () => {
+    let wallet: string;
+    let keypair: any;
+    let accessToken: string;
+    let refreshToken: string;
+
+    beforeEach(async () => {
+      keypair = createTestKeypair();
+      wallet = keypair.publicKey();
+      testWallets.push(wallet);
+
+      // Authenticate to get initial tokens
+      const nonceResponse = await request(app.getHttpServer())
+        .post('/auth/nonce')
+        .send({ wallet })
+        .expect(201);
+
+      const nonce = nonceResponse.body.nonce;
+      const signature = signMessage(keypair, nonce);
+
+      const verifyResponse = await request(app.getHttpServer())
+        .post('/auth/verify')
+        .send({ wallet, nonce, signature })
+        .expect(200);
+
+      accessToken = verifyResponse.body.accessToken;
+      refreshToken = verifyResponse.body.refreshToken;
+    });
+
+    it('POST /auth/refresh - should refresh tokens successfully', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(response.body).toHaveProperty('accessToken');
+      expect(response.body).toHaveProperty('refreshToken');
+      expect(response.body.expiresIn).toBe(900);
+      expect(response.body.tokenType).toBe('Bearer');
+
+      // Verify the new access token works
+      await request(app.getHttpServer())
+        .get('/users/me')
+        .set('Authorization', `Bearer ${response.body.accessToken}`)
+        .expect(200);
+
+      // Verify the old refresh token is rotated (deleted) and no longer works
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+    });
+
+    it('POST /auth/refresh - should return 400 when body is empty', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({})
+        .expect(400);
+    });
+
+    it('POST /auth/refresh - should return 400 when refreshToken is empty', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: '' })
+        .expect(400);
+    });
+
+    it('POST /auth/refresh - should return 400 when extra fields are provided', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken, extraField: 'invalid' })
+        .expect(400);
+    });
+
+    it('POST /auth/refresh - should return 401 with invalid refresh token signature', async () => {
+      const invalidToken = refreshToken + 'invalid';
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: invalidToken })
+        .expect(401);
+    });
+
+    it('DELETE /auth/logout - should log out successfully and revoke refresh token', async () => {
+      await request(app.getHttpServer())
+        .delete('/auth/logout')
+        .send({ refreshToken })
+        .expect(204);
+
+      // Verify the refresh token is now revoked
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+    });
+
+    it('DELETE /auth/logout - should return 400 when body is empty', async () => {
+      await request(app.getHttpServer())
+        .delete('/auth/logout')
+        .send({})
+        .expect(400);
+    });
+
+    it('DELETE /auth/logout - should return 401 with invalid token signature', async () => {
+      const invalidToken = refreshToken + 'invalid';
+      await request(app.getHttpServer())
+        .delete('/auth/logout')
+        .send({ refreshToken: invalidToken })
+        .expect(401);
+    });
+  });
 });

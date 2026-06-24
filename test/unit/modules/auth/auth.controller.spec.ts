@@ -17,6 +17,8 @@ describe('AuthController', () => {
     generateNonce: jest.fn(),
     verifySignature: jest.fn().mockResolvedValue(undefined),
     generateTokens: jest.fn().mockResolvedValue(expectedTokens),
+    refreshTokens: jest.fn().mockResolvedValue(expectedTokens),
+    logout: jest.fn().mockResolvedValue(undefined),
   };
 
   const validWallet = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
@@ -87,6 +89,34 @@ describe('AuthController', () => {
       expect(authService.verifySignature).toHaveBeenCalledTimes(1);
       expect(authService.generateTokens).toHaveBeenCalledWith(validWallet);
       expect(authService.generateTokens).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /auth/refresh
+  // ---------------------------------------------------------------------------
+  describe('refresh', () => {
+    it('should return new JWT tokens on valid refresh token', async () => {
+      const dto = { refreshToken: 'valid.refresh.token' };
+      const result = await controller.refresh(dto);
+
+      expect(result).toEqual(expectedTokens);
+      expect(authService.refreshTokens).toHaveBeenCalledWith(dto.refreshToken);
+      expect(authService.refreshTokens).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /auth/logout
+  // ---------------------------------------------------------------------------
+  describe('logout', () => {
+    it('should log out successfully', async () => {
+      const dto = { refreshToken: 'valid.refresh.token' };
+      const result = await controller.logout(dto);
+
+      expect(result).toBeUndefined();
+      expect(authService.logout).toHaveBeenCalledWith(dto.refreshToken);
+      expect(authService.logout).toHaveBeenCalledTimes(1);
     });
   });
 });
