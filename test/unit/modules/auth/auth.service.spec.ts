@@ -29,6 +29,7 @@ describe('AuthService', () => {
 
   const mockJwtService = {
     sign: jest.fn().mockReturnValue('mock.jwt.token'),
+    decode: jest.fn(),
   };
 
   const mockConfigService = {
@@ -45,6 +46,7 @@ describe('AuthService', () => {
   const mockSessionsRepository = {
     findByHash: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
     delete: jest.fn(),
     deleteByHash: jest.fn(),
     revokeFamily: jest.fn(),
@@ -473,11 +475,11 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
       expect(result.expiresIn).toBe(900);
-      expect(mockSessionsRepository.delete).toHaveBeenCalledWith(mockSession.id);
-      expect(mockSessionsRepository.create).toHaveBeenCalledWith(
+      expect(mockSessionsRepository.update).toHaveBeenCalledWith(
+        mockSession.id,
         expect.objectContaining({
-          userId: mockUser.id,
-          tokenFamily: mockSession.token_family,
+          refreshTokenHash: expect.any(String),
+          expiresAt: expect.any(String),
         }),
       );
     });
@@ -562,6 +564,7 @@ describe('AuthService', () => {
       const expiredError = new Error('JWT Expired');
       expiredError.name = 'TokenExpiredError';
       mockJwtService.verifyAsync.mockRejectedValue(expiredError);
+      mockJwtService.decode.mockReturnValue({ type: 'refresh' });
 
       await service.logout(validRefreshToken);
 

@@ -136,4 +136,34 @@ export class SessionsRepository {
       });
     }
   }
+
+  /**
+   * Updates an existing session by ID (used for atomic token rotation).
+   */
+  async update(
+    id: string,
+    updateData: {
+      refreshTokenHash: string;
+      expiresAt: string;
+    },
+  ): Promise<SessionRecord> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .update({
+        refresh_token_hash: updateData.refreshTokenHash,
+        expires_at: updateData.expiresAt,
+      })
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new InternalServerErrorException({
+        code: 'DATABASE_QUERY_ERROR',
+        message: error.message,
+      });
+    }
+    return data;
+  }
 }

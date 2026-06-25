@@ -137,6 +137,7 @@ export class AuthController {
 
   @Delete('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({
     summary: 'Log out user by revoking the refresh token',
     description:

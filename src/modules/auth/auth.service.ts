@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Keypair, StrKey } from 'stellar-sdk';
 import { SupabaseService } from '../../database/supabase.client';
 import { UsersRepository } from '../../database/repositories/users.repository';
@@ -270,11 +270,13 @@ export class AuthService {
     // Hash refresh token with SHA-256 before storage (per sessions table schema)
     const refreshTokenHash = createHash('sha256').update(refreshToken).digest('hex');
     const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_MS);
+    const tokenFamily = randomUUID();
 
     await this.sessionsRepository.create({
       userId,
       refreshTokenHash,
       expiresAt: refreshExpiresAt.toISOString(),
+      tokenFamily,
     });
 
     return {
@@ -336,6 +338,8 @@ export class AuthService {
 
     if (new Date(session.expires_at) < new Date()) {
       // Clean up the expired session from the DB
+      // Note: A scheduled cron job or database trigger typically performs background cleanup
+      // of all expired/revoked sessions. We do it here opportunistically.
       await this.sessionsRepository.delete(session.id);
       throw new UnauthorizedException({
         code: 'AUTH_TOKEN_EXPIRED',
@@ -378,14 +382,10 @@ export class AuthService {
     const newRefreshTokenHash = createHash('sha256').update(newRefreshToken).digest('hex');
     const newRefreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_MS);
 
-    // Rotate: delete old session, insert new session under the same family
-    await this.sessionsRepository.delete(session.id);
-
-    await this.sessionsRepository.create({
-      userId: user.id,
+    // Rotate: update the existing session to the new token hash/expiration atomically
+    await this.sessionsRepository.update(session.id, {
       refreshTokenHash: newRefreshTokenHash,
       expiresAt: newRefreshExpiresAt.toISOString(),
-      tokenFamily: session.token_family,
     });
 
     return {
@@ -407,8 +407,11 @@ export class AuthService {
       });
     } catch (error: any) {
       if (error?.name === 'TokenExpiredError') {
-        const hash = createHash('sha256').update(refreshToken).digest('hex');
-        await this.sessionsRepository.deleteByHash(hash);
+        const decoded = this.jwtService.decode(refreshToken) as any;
+        if (decoded && decoded.type === 'refresh') {
+          const hash = createHash('sha256').update(refreshToken).digest('hex');
+          await this.sessionsRepository.deleteByHash(hash);
+        }
         return;
       }
       throw new UnauthorizedException({
