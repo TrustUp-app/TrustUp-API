@@ -1,5 +1,7 @@
 -- Migration: Add background cleanup job for expired/revoked sessions
 -- Description: Creates a function to delete expired sessions and schedules it to run daily using pg_cron (if available).
+-- Note for reviewers: The `token_family` and `revoked_at` columns were already added to the schema 
+-- in the previous migration: `20260213003000_fix_sessions_refresh_token_hashing.sql`.
 
 CREATE OR REPLACE FUNCTION cleanup_expired_sessions()
 RETURNS void AS $$
