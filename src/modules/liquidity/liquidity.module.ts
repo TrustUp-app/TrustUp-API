@@ -9,6 +9,7 @@ import { SupabaseService } from '../../database/supabase.client';
 import { LiquidityRepository } from '../../database/repositories/liquidity.repository';
 import { SorobanService } from '../../blockchain/soroban/soroban.service';
 import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-contract.client';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-co
     SupabaseService,
     SorobanService,
     LiquidityContractClient,
+    IdempotencyInterceptor,
   ],
   exports: [LiquidityService],
 })

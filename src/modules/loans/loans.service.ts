@@ -1,11 +1,13 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   Logger,
   InternalServerErrorException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { createHash } from "crypto";
 import { ReputationService } from "../reputation/reputation.service";
 import {
   LoansRepository,
@@ -132,6 +134,14 @@ export class LoansService {
       });
     }
 
+    const xdrHash = createHash("sha256").update(xdr).digest("hex");
+    if (await this.hasPendingLoanWithXdrHash(wallet, xdrHash)) {
+      throw new ConflictException({
+        code: "LOAN_DUPLICATE_PENDING",
+        message: "An identical pending loan already exists.",
+      });
+    }
+
     try {
       await this.persistPendingLoan({
         loan_id: loanId,
@@ -146,8 +156,15 @@ export class LoansService {
         term: terms.term,
         status: "pending",
         next_payment_due: terms.schedule[0]?.dueDate ?? null,
+        xdr_hash: xdrHash,
       });
     } catch (error) {
+      if (error?.code === "23505") {
+        throw new ConflictException({
+          code: "LOAN_DUPLICATE_PENDING",
+          message: "An identical pending loan already exists.",
+        });
+      }
       this.logger.error(
         `Failed to persist pending loan ${loanId}: ${error.message}`,
       );
@@ -384,6 +401,20 @@ export class LoansService {
 
   private async persistPendingLoan(record: CreateLoanRecord): Promise<void> {
     await this.loansRepository.createLoan(record);
+  }
+
+  private async hasPendingLoanWithXdrHash(
+    wallet: string,
+    xdrHash: string,
+  ): Promise<boolean> {
+    try {
+      return await this.loansRepository.hasPendingWithXdrHash(wallet, xdrHash);
+    } catch {
+      throw new InternalServerErrorException({
+        code: "PENDING_LOAN_QUERY_FAILED",
+        message: "Failed to check for a duplicate pending loan.",
+      });
+    }
   }
 
   generateSchedule(totalRepayment: number, term: number): SchedulePaymentDto[] {

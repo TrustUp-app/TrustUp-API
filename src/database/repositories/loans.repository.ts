@@ -35,6 +35,7 @@ export interface CreateLoanRecord {
   term: number;
   status: "pending";
   next_payment_due: string | null;
+  xdr_hash: string;
 }
 
 export interface LoanStatusRecord {
@@ -116,6 +117,23 @@ export class LoansRepository {
     return (data ?? []) as Pick<LoanRecord, "remaining_balance">[];
   }
 
+  async hasPendingWithXdrHash(
+    wallet: string,
+    xdrHash: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from("loans")
+      .select("id")
+      .eq("user_wallet", wallet)
+      .eq("xdr_hash", xdrHash)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    this.throwOnError(error);
+    return data != null;
+  }
+
   async findStatusByLoanIdAndWallet(
     loanId: string,
     userWallet: string,
@@ -153,6 +171,9 @@ export class LoansRepository {
       .getServiceRoleClient()
       .from("loans")
       .insert(record);
+    if (error?.code === "23505") {
+      throw error;
+    }
     this.throwOnError(error);
   }
 
@@ -201,7 +222,7 @@ export class LoansRepository {
     this.throwOnError(error);
   }
 
-  private throwOnError(error: { message?: string } | null): void {
+  private throwOnError(error: { code?: string; message?: string } | null): void {
     if (error) {
       throw new InternalServerErrorException({
         code: "DATABASE_QUERY_ERROR",

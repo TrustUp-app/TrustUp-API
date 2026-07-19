@@ -77,8 +77,8 @@ describe('LoansService', () => {
     mockSupabaseFrom.order.mockReturnThis();
     mockSupabaseFrom.range.mockReturnThis();
     mockSupabaseFrom.update.mockReturnThis();
-    mockSupabaseFrom.maybeSingle.mockImplementation(() => mockSupabaseFrom.single());
     mockSupabaseFrom.insert.mockResolvedValue({ error: null });
+    mockSupabaseFrom.maybeSingle.mockResolvedValue({ data: null, error: null });
     mockCreditLineContractClient.buildCreateLoanTransaction.mockResolvedValue('AAAAAgAAAAC...');
     mockCreditLineContractClient.buildRepayLoanTx.mockResolvedValue('AAAAAgAAAAA...');
   });
@@ -281,6 +281,17 @@ describe('LoansService', () => {
       );
     });
 
+    it('should reject an existing pending loan with the same XDR hash', async () => {
+      mockReputation(75, 'silver', 8, 2000);
+      mockMerchantFound();
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({ data: { id: 'existing-loan' }, error: null });
+
+      await expect(service.createLoan(validWallet, baseDto)).rejects.toMatchObject({
+        response: { code: 'LOAN_DUPLICATE_PENDING' },
+      });
+      expect(mockSupabaseFrom.insert).not.toHaveBeenCalled();
+    });
+
     it('should reject loan creation when reputation is below minimum threshold', async () => {
       mockReputation(59, 'poor', 12, 500);
       mockMerchantFound();
@@ -333,7 +344,7 @@ describe('LoansService', () => {
     const loanId = '11111111-2222-3333-4444-555555555555';
 
     function mockActiveLoan(overrides: Record<string, unknown> = {}) {
-      mockSupabaseFrom.single.mockResolvedValue({
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({
         data: {
           id: loanId,
           loan_id: 'chain-loan-1',
@@ -368,7 +379,7 @@ describe('LoansService', () => {
     });
 
     it('should throw NotFoundException when loan does not exist', async () => {
-      mockSupabaseFrom.single.mockResolvedValue({
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({
         data: null,
         error: null,
       });

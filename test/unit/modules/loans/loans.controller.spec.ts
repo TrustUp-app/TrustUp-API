@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { LoansController } from '../../../../src/modules/loans/loans.controller';
 import { LoansService } from '../../../../src/modules/loans/loans.service';
 import { CreateLoanResponseDto } from '../../../../src/modules/loans/dto/create-loan-response.dto';
 import { LoanListStatusFilter } from '../../../../src/modules/loans/dto/loan-list-query.dto';
+import { IdempotencyInterceptor } from '../../../../src/common/interceptors/idempotency.interceptor';
 
 describe('LoansController', () => {
   let controller: LoansController;
@@ -43,7 +45,11 @@ describe('LoansController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [LoansController],
-      providers: [{ provide: LoansService, useValue: mockLoansService }],
+      providers: [
+        { provide: LoansService, useValue: mockLoansService },
+        { provide: CACHE_MANAGER, useValue: { get: jest.fn(), set: jest.fn() } },
+        IdempotencyInterceptor,
+      ],
     }).compile();
 
     controller = module.get<LoansController>(LoansController);

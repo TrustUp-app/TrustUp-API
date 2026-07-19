@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,6 +18,7 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiQuery,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { LoansService } from './loans.service';
 import { LoanQuoteRequestDto } from './dto/loan-quote-request.dto';
@@ -30,6 +32,8 @@ import { LoanListQueryDto, LoanListStatusFilter } from './dto/loan-list-query.dt
 import { LoanListResponseDto } from './dto/loan-list-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 
 @ApiTags('loans')
 @Controller('loans')
@@ -125,7 +129,9 @@ export class LoansController {
   @Post('create')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiOperation({
     summary: 'Create BNPL loan',
     description:
@@ -146,6 +152,7 @@ export class LoansController {
   async createLoan(
     @CurrentUser() user: { wallet: string },
     @Body() dto: CreateLoanRequestDto,
+    @IdempotencyKey() _idempotencyKey?: string,
   ) {
     const data = await this.loansService.createLoan(user.wallet, dto);
     return { success: true, data, message: 'Pending loan created successfully' };
@@ -154,7 +161,9 @@ export class LoansController {
   @Post(':loanId/pay')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiParam({
     name: 'loanId',
     description: 'UUID of the loan to repay',
@@ -181,6 +190,7 @@ export class LoansController {
     @CurrentUser() user: { wallet: string },
     @Param('loanId', ParseUUIDPipe) loanId: string,
     @Body() dto: LoanPaymentRequestDto,
+    @IdempotencyKey() _idempotencyKey?: string,
   ) {
     const data = await this.loansService.repayLoan(user.wallet, loanId, dto);
     return { success: true, data, message: 'Repayment transaction constructed successfully' };

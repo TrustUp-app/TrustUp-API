@@ -6,12 +6,14 @@ import {
   HttpStatus,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { LiquidityService } from './liquidity.service';
@@ -23,6 +25,8 @@ import { LiquidityDepositRequestDto } from './dto/liquidity-deposit-request.dto'
 import { LiquidityDepositResponseDto } from './dto/liquidity-deposit-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 
 @ApiTags('liquidity')
 @Controller('liquidity')
@@ -88,7 +92,9 @@ export class LiquidityController {
   @Post('deposit')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiOperation({
     summary: 'Construct a liquidity pool deposit transaction',
     description:
@@ -105,6 +111,7 @@ export class LiquidityController {
   async depositLiquidity(
     @CurrentUser() user: { wallet: string },
     @Body() dto: LiquidityDepositRequestDto,
+    @IdempotencyKey() _idempotencyKey?: string,
   ): Promise<{ success: boolean; data: LiquidityDepositResponseDto; message: string }> {
     const data = await this.liquidityService.depositLiquidity(user.wallet, dto);
     return {
@@ -117,7 +124,9 @@ export class LiquidityController {
   @Post('withdraw')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiOperation({
     summary: 'Construct a liquidity withdrawal transaction',
     description:
@@ -135,6 +144,7 @@ export class LiquidityController {
   async withdrawLiquidity(
     @CurrentUser() user: { wallet: string },
     @Body() dto: LiquidityWithdrawRequestDto,
+    @IdempotencyKey() _idempotencyKey?: string,
   ): Promise<{ success: boolean; data: LiquidityWithdrawResponseDto; message: string }> {
     const data = await this.liquidityService.withdrawLiquidity(user.wallet, dto);
     return {

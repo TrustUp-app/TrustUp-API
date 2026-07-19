@@ -1,6 +1,8 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { LiquidityController } from "../../../../src/modules/liquidity/liquidity.controller";
 import { LiquidityService } from "../../../../src/modules/liquidity/liquidity.service";
+import { IdempotencyInterceptor } from '../../../../src/common/interceptors/idempotency.interceptor';
 
 describe("LiquidityController", () => {
   let controller: LiquidityController;
@@ -34,6 +36,8 @@ describe("LiquidityController", () => {
       controllers: [LiquidityController],
       providers: [
         { provide: LiquidityService, useValue: mockLiquidityService },
+        { provide: CACHE_MANAGER, useValue: { get: jest.fn(), set: jest.fn() } },
+        IdempotencyInterceptor,
       ],
     }).compile();
 
