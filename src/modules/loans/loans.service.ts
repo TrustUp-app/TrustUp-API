@@ -5,25 +5,35 @@ import {
   Logger,
   InternalServerErrorException,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { ReputationService } from '../reputation/reputation.service';
-import { SupabaseService } from '../../database/supabase.client';
-import { CreditLineContractClient } from '../../blockchain/contracts/credit-line-contract.client';
-import { ReputationContractClient } from '../../blockchain/contracts/reputation-contract.client';
-import { LoanQuoteRequestDto } from './dto/loan-quote-request.dto';
-import { LoanQuoteResponseDto, SchedulePaymentDto } from './dto/loan-quote-response.dto';
-import { CreateLoanRequestDto } from './dto/create-loan-request.dto';
-import { CreateLoanResponseDto } from './dto/create-loan-response.dto';
-import { LoanPaymentRequestDto } from './dto/loan-payment-request.dto';
-import { LoanPaymentResponseDto } from './dto/loan-payment-response.dto';
-import { AvailableCreditResponseDto } from './dto/available-credit-response.dto';
-import { LoanListQueryDto, LoanListStatusFilter } from './dto/loan-list-query.dto';
+} from "@nestjs/common";
+import { ReputationService } from "../reputation/reputation.service";
+import {
+  LoansRepository,
+  CreateLoanRecord,
+} from "../../database/repositories/loans.repository";
+import { MerchantsRepository } from "../../database/repositories/merchants.repository";
+import { CreditLineContractClient } from "../../blockchain/contracts/credit-line-contract.client";
+import { ReputationContractClient } from "../../blockchain/contracts/reputation-contract.client";
+import { LoanQuoteRequestDto } from "./dto/loan-quote-request.dto";
+import {
+  LoanQuoteResponseDto,
+  SchedulePaymentDto,
+} from "./dto/loan-quote-response.dto";
+import { CreateLoanRequestDto } from "./dto/create-loan-request.dto";
+import { CreateLoanResponseDto } from "./dto/create-loan-response.dto";
+import { LoanPaymentRequestDto } from "./dto/loan-payment-request.dto";
+import { LoanPaymentResponseDto } from "./dto/loan-payment-response.dto";
+import { AvailableCreditResponseDto } from "./dto/available-credit-response.dto";
+import {
+  LoanListQueryDto,
+  LoanListStatusFilter,
+} from "./dto/loan-list-query.dto";
 import {
   LoanListItemDto,
   LoanListMerchantDto,
   LoanListResponseDto,
-} from './dto/loan-list-response.dto';
-import { ReputationTier } from '../reputation/dto/reputation-response.dto';
+} from "./dto/loan-list-response.dto";
+import { ReputationTier } from "../reputation/dto/reputation-response.dto";
 
 const GUARANTEE_PERCENT = 0.2;
 const LOAN_PERCENT = 0.8;
@@ -33,21 +43,6 @@ interface ValidMerchant {
   id: string;
   name: string;
   is_active: boolean;
-}
-
-interface CreateLoanRecord {
-  loan_id: string;
-  user_wallet: string;
-  merchant_id: string;
-  amount: number;
-  loan_amount: number;
-  guarantee: number;
-  interest_rate: number;
-  total_repayment: number;
-  remaining_balance: number;
-  term: number;
-  status: 'pending';
-  next_payment_due: string | null;
 }
 
 interface LoanPaymentRow {
@@ -71,7 +66,7 @@ interface LoanListRow {
   total_repayment: number | string;
   remaining_balance: number | string;
   term: number;
-  status: LoanListStatusFilter | 'pending';
+  status: LoanListStatusFilter | "pending";
   next_payment_due: string | null;
   created_at: string;
   completed_at: string | null;
@@ -86,7 +81,8 @@ export class LoansService {
 
   constructor(
     private readonly reputationService: ReputationService,
-    private readonly supabaseService: SupabaseService,
+    private readonly loansRepository: LoansRepository,
+    private readonly merchantsRepository: MerchantsRepository,
     private readonly creditLineContractClient: CreditLineContractClient,
     private readonly reputationContractClient: ReputationContractClient,
   ) {}
@@ -99,27 +95,40 @@ export class LoansService {
     return terms;
   }
 
-  async createLoan(wallet: string, dto: CreateLoanRequestDto): Promise<CreateLoanResponseDto> {
-    const { merchant, terms } = await this.prepareLoanPreview(wallet, dto, true);
+  async createLoan(
+    wallet: string,
+    dto: CreateLoanRequestDto,
+  ): Promise<CreateLoanResponseDto> {
+    const { merchant, terms } = await this.prepareLoanPreview(
+      wallet,
+      dto,
+      true,
+    );
     const loanId = this.generateProvisionalLoanId();
     const description = `Create BNPL loan for $${dto.amount} at ${merchant.name}`;
 
     let xdr: string;
     try {
-      xdr = await this.creditLineContractClient.buildCreateLoanTransaction(wallet, {
-        loanId,
-        merchantId: merchant.id,
-        amount: dto.amount,
-        loanAmount: terms.loanAmount,
-        guarantee: terms.guarantee,
-        interestRate: terms.interestRate,
-        term: terms.term,
-      });
+      xdr = await this.creditLineContractClient.buildCreateLoanTransaction(
+        wallet,
+        {
+          loanId,
+          merchantId: merchant.id,
+          amount: dto.amount,
+          loanAmount: terms.loanAmount,
+          guarantee: terms.guarantee,
+          interestRate: terms.interestRate,
+          term: terms.term,
+        },
+      );
     } catch (error) {
-      this.logger.error(`Failed to build create_loan XDR for ${loanId}: ${error.message}`);
+      this.logger.error(
+        `Failed to build create_loan XDR for ${loanId}: ${error.message}`,
+      );
       throw new InternalServerErrorException({
-        code: 'BLOCKCHAIN_CREATE_LOAN_XDR_FAILED',
-        message: 'Failed to construct unsigned loan transaction. Please try again.',
+        code: "BLOCKCHAIN_CREATE_LOAN_XDR_FAILED",
+        message:
+          "Failed to construct unsigned loan transaction. Please try again.",
       });
     }
 
@@ -135,14 +144,16 @@ export class LoansService {
         total_repayment: terms.totalRepayment,
         remaining_balance: terms.totalRepayment,
         term: terms.term,
-        status: 'pending',
+        status: "pending",
         next_payment_due: terms.schedule[0]?.dueDate ?? null,
       });
     } catch (error) {
-      this.logger.error(`Failed to persist pending loan ${loanId}: ${error.message}`);
+      this.logger.error(
+        `Failed to persist pending loan ${loanId}: ${error.message}`,
+      );
       throw new InternalServerErrorException({
-        code: 'DATABASE_CREATE_LOAN_FAILED',
-        message: 'Failed to persist pending loan record. Please try again.',
+        code: "DATABASE_CREATE_LOAN_FAILED",
+        message: "Failed to persist pending loan record. Please try again.",
       });
     }
 
@@ -159,30 +170,25 @@ export class LoansService {
     loanId: string,
     dto: LoanPaymentRequestDto,
   ): Promise<LoanPaymentResponseDto> {
-    const client = this.supabaseService.getServiceRoleClient();
-    const { data: loan, error } = await client
-      .from('loans')
-      .select('id, loan_id, user_wallet, status, remaining_balance')
-      .eq('id', loanId)
-      .single();
+    const loan = await this.loansRepository.findById(loanId);
 
-    if (error || !loan) {
+    if (!loan) {
       throw new NotFoundException({
-        code: 'LOAN_NOT_FOUND',
-        message: 'Loan not found. Please provide a valid loan ID.',
+        code: "LOAN_NOT_FOUND",
+        message: "Loan not found. Please provide a valid loan ID.",
       });
     }
 
     if (loan.user_wallet !== wallet) {
       throw new NotFoundException({
-        code: 'LOAN_NOT_FOUND',
-        message: 'Loan not found. Please provide a valid loan ID.',
+        code: "LOAN_NOT_FOUND",
+        message: "Loan not found. Please provide a valid loan ID.",
       });
     }
 
-    if (loan.status !== 'active') {
+    if (loan.status !== "active") {
       throw new BadRequestException({
-        code: 'LOAN_NOT_ACTIVE',
+        code: "LOAN_NOT_ACTIVE",
         message: `Cannot make payments on a loan with status '${loan.status}'. Only active loans can be repaid.`,
       });
     }
@@ -190,7 +196,7 @@ export class LoansService {
     const remainingBalance = Number(loan.remaining_balance);
     if (dto.amount > remainingBalance) {
       throw new BadRequestException({
-        code: 'LOAN_PAYMENT_EXCEEDS_BALANCE',
+        code: "LOAN_PAYMENT_EXCEEDS_BALANCE",
         message: `Payment amount $${dto.amount} exceeds the remaining balance of $${remainingBalance}.`,
       });
     }
@@ -201,7 +207,8 @@ export class LoansService {
       dto.amount,
     );
 
-    const newBalance = Math.round((remainingBalance - dto.amount) * 10_000_000) / 10_000_000;
+    const newBalance =
+      Math.round((remainingBalance - dto.amount) * 10_000_000) / 10_000_000;
     const willComplete = newBalance === 0;
 
     return {
@@ -215,108 +222,83 @@ export class LoansService {
     };
   }
 
-  async getMyLoans(wallet: string, query: LoanListQueryDto): Promise<LoanListResponseDto> {
+  async getMyLoans(
+    wallet: string,
+    query: LoanListQueryDto,
+  ): Promise<LoanListResponseDto> {
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
-    const client = this.supabaseService.getServiceRoleClient();
-
-    let loansQuery = client
-      .from('loans')
-      .select(
-        `
-          id,
-          loan_id,
-          merchant_id,
-          amount,
-          loan_amount,
-          guarantee,
-          interest_rate,
-          total_repayment,
-          remaining_balance,
-          term,
-          status,
-          next_payment_due,
-          created_at,
-          completed_at,
-          defaulted_at,
-          merchants (
-            id,
-            name,
-            logo
-          ),
-          loan_payments (
-            amount
-          )
-        `,
-        { count: 'exact' },
-      )
-      .eq('user_wallet', wallet)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (query.status) {
-      loansQuery = loansQuery.eq('status', query.status);
-    } else {
-      loansQuery = loansQuery.in('status', [
-        LoanListStatusFilter.ACTIVE,
-        LoanListStatusFilter.COMPLETED,
-        LoanListStatusFilter.DEFAULTED,
-      ]);
-    }
-
-    const { data: loans, error, count } = await loansQuery;
-
-    if (error) {
-      this.logger.error(`Failed to fetch loans for ${wallet}: ${error.message}`);
-      throw new InternalServerErrorException({
-        code: 'USER_LOANS_QUERY_FAILED',
-        message: 'Failed to retrieve your loans. Please try again later.',
-      });
-    }
-
-    return {
-      data: (loans ?? []).map((loan) => this.mapLoanListItem(loan as LoanListRow)),
-      pagination: {
+    try {
+      const { loans, total } = await this.loansRepository.findByUser(wallet, {
         limit,
         offset,
-        total: count ?? 0,
-      },
-    };
+        status: query.status,
+        statuses: query.status
+          ? undefined
+          : [
+              LoanListStatusFilter.ACTIVE,
+              LoanListStatusFilter.COMPLETED,
+              LoanListStatusFilter.DEFAULTED,
+            ],
+      });
+
+      return {
+        data: loans.map((loan) => this.mapLoanListItem(loan as LoanListRow)),
+        pagination: { limit, offset, total },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch loans for ${wallet}: ${error.message}`,
+      );
+      throw new InternalServerErrorException({
+        code: "USER_LOANS_QUERY_FAILED",
+        message: "Failed to retrieve your loans. Please try again later.",
+      });
+    }
   }
 
-  async getAvailableCredit(wallet: string): Promise<AvailableCreditResponseDto> {
+  async getAvailableCredit(
+    wallet: string,
+  ): Promise<AvailableCreditResponseDto> {
     let reputationScore: number;
 
     try {
-      reputationScore = (await this.reputationContractClient.getScore(wallet)) ?? 0;
+      reputationScore =
+        (await this.reputationContractClient.getScore(wallet)) ?? 0;
     } catch (error) {
-      this.logger.error(`Failed to fetch reputation score for ${wallet}: ${error.message}`);
+      this.logger.error(
+        `Failed to fetch reputation score for ${wallet}: ${error.message}`,
+      );
       throw new ServiceUnavailableException({
-        code: 'REPUTATION_CONTRACT_UNAVAILABLE',
-        message: 'Unable to read the reputation contract right now. Please try again later.',
+        code: "REPUTATION_CONTRACT_UNAVAILABLE",
+        message:
+          "Unable to read the reputation contract right now. Please try again later.",
       });
     }
 
     const { maxCredit, tier } = this.mapScoreToCreditTier(reputationScore);
 
-    const client = this.supabaseService.getServiceRoleClient();
-    const { data: activeLoans, error } = await client
-      .from('loans')
-      .select('remaining_balance')
-      .eq('user_wallet', wallet)
-      .eq('status', 'active');
-
-    if (error) {
+    let activeLoans: { remaining_balance: number | string }[];
+    try {
+      activeLoans = await this.loansRepository.findActiveByUser(wallet);
+    } catch {
       throw new InternalServerErrorException({
-        code: 'ACTIVE_LOANS_QUERY_FAILED',
-        message: 'Failed to calculate active loan utilization.',
+        code: "ACTIVE_LOANS_QUERY_FAILED",
+        message: "Failed to calculate active loan utilization.",
       });
     }
 
-    const creditUsed = Math.round(
-      (activeLoans ?? []).reduce((sum, loan) => sum + Number(loan.remaining_balance ?? 0), 0) * 100,
-    ) / 100;
-    const availableCredit = Math.max(0, Math.round((maxCredit - creditUsed) * 100) / 100);
+    const creditUsed =
+      Math.round(
+        activeLoans.reduce(
+          (sum, loan) => sum + Number(loan.remaining_balance ?? 0),
+          0,
+        ) * 100,
+      ) / 100;
+    const availableCredit = Math.max(
+      0,
+      Math.round((maxCredit - creditUsed) * 100) / 100,
+    );
 
     return {
       reputationScore,
@@ -324,7 +306,7 @@ export class LoansService {
       maxCreditLimit: maxCredit,
       creditUsed,
       availableCredit,
-      activeLoans: activeLoans?.length ?? 0,
+      activeLoans: activeLoans.length,
     };
   }
 
@@ -336,16 +318,19 @@ export class LoansService {
     const reputation = await this.reputationService.getReputationScore(wallet);
     const merchant = await this.validateMerchant(dto.merchant);
 
-    if (enforceMinimumReputation && reputation.score < MIN_LOAN_REPUTATION_SCORE) {
+    if (
+      enforceMinimumReputation &&
+      reputation.score < MIN_LOAN_REPUTATION_SCORE
+    ) {
       throw new BadRequestException({
-        code: 'LOAN_REPUTATION_TOO_LOW',
+        code: "LOAN_REPUTATION_TOO_LOW",
         message: `Minimum reputation score to create a loan is ${MIN_LOAN_REPUTATION_SCORE}. Your current score is ${reputation.score}.`,
       });
     }
 
     if (dto.amount > reputation.maxCredit) {
       throw new BadRequestException({
-        code: 'LOAN_AMOUNT_EXCEEDS_CREDIT',
+        code: "LOAN_AMOUNT_EXCEEDS_CREDIT",
         message: `Requested amount $${dto.amount} exceeds your maximum credit limit of $${reputation.maxCredit}. Improve your reputation score to unlock higher limits.`,
       });
     }
@@ -374,23 +359,18 @@ export class LoansService {
   }
 
   private async validateMerchant(merchantId: string): Promise<ValidMerchant> {
-    const client = this.supabaseService.getServiceRoleClient();
-    const { data: merchant, error } = await client
-      .from('merchants')
-      .select('id, name, is_active')
-      .eq('id', merchantId)
-      .single();
+    const merchant = await this.merchantsRepository.findById(merchantId);
 
-    if (error || !merchant) {
+    if (!merchant) {
       throw new NotFoundException({
-        code: 'MERCHANT_NOT_FOUND',
-        message: 'Merchant not found. Please provide a valid merchant ID.',
+        code: "MERCHANT_NOT_FOUND",
+        message: "Merchant not found. Please provide a valid merchant ID.",
       });
     }
 
     if (!merchant.is_active) {
       throw new BadRequestException({
-        code: 'MERCHANT_INACTIVE',
+        code: "MERCHANT_INACTIVE",
         message: `Merchant "${merchant.name}" is not currently accepting new loans.`,
       });
     }
@@ -403,12 +383,7 @@ export class LoansService {
   }
 
   private async persistPendingLoan(record: CreateLoanRecord): Promise<void> {
-    const client = this.supabaseService.getServiceRoleClient();
-    const { error } = await client.from('loans').insert(record);
-
-    if (error) {
-      throw new Error(error.message ?? 'Supabase insert failed');
-    }
+    await this.loansRepository.createLoan(record);
   }
 
   generateSchedule(totalRepayment: number, term: number): SchedulePaymentDto[] {
@@ -450,17 +425,29 @@ export class LoansService {
   private mapLoanListItem(loan: LoanListRow): LoanListItemDto {
     const totalRepayment = Number(loan.total_repayment);
     const remainingBalance = Number(loan.remaining_balance);
-    const totalPaid = this.roundCurrency(Math.max(0, totalRepayment - remainingBalance));
-    const schedule = this.generateScheduleFromDate(totalRepayment, loan.term, new Date(loan.created_at));
-    const paymentIndex = Math.min(loan.loan_payments?.length ?? 0, Math.max(schedule.length - 1, 0));
+    const totalPaid = this.roundCurrency(
+      Math.max(0, totalRepayment - remainingBalance),
+    );
+    const schedule = this.generateScheduleFromDate(
+      totalRepayment,
+      loan.term,
+      new Date(loan.created_at),
+    );
+    const paymentIndex = Math.min(
+      loan.loan_payments?.length ?? 0,
+      Math.max(schedule.length - 1, 0),
+    );
     const scheduledNextPayment = schedule[paymentIndex];
     const nextPayment =
       loan.status === LoanListStatusFilter.ACTIVE && remainingBalance > 0
         ? {
-            dueDate: loan.next_payment_due ?? scheduledNextPayment?.dueDate ?? null,
+            dueDate:
+              loan.next_payment_due ?? scheduledNextPayment?.dueDate ?? null,
             amount:
               scheduledNextPayment != null
-                ? this.roundCurrency(Math.min(scheduledNextPayment.amount, remainingBalance))
+                ? this.roundCurrency(
+                    Math.min(scheduledNextPayment.amount, remainingBalance),
+                  )
                 : this.roundCurrency(remainingBalance),
           }
         : { dueDate: null, amount: null };
@@ -486,7 +473,9 @@ export class LoansService {
   }
 
   private normalizeMerchant(loan: LoanListRow): LoanListMerchantDto {
-    const merchant = Array.isArray(loan.merchants) ? loan.merchants[0] : loan.merchants;
+    const merchant = Array.isArray(loan.merchants)
+      ? loan.merchants[0]
+      : loan.merchants;
 
     return {
       id: merchant?.id ?? loan.merchant_id ?? null,
@@ -504,17 +493,17 @@ export class LoansService {
     maxCredit: number;
   } {
     if (score >= 90) {
-      return { tier: 'gold', maxCredit: 5000 };
+      return { tier: "gold", maxCredit: 5000 };
     }
 
     if (score >= 75) {
-      return { tier: 'silver', maxCredit: 3000 };
+      return { tier: "silver", maxCredit: 3000 };
     }
 
     if (score >= 60) {
-      return { tier: 'bronze', maxCredit: 1500 };
+      return { tier: "bronze", maxCredit: 1500 };
     }
 
-    return { tier: 'poor', maxCredit: 500 };
+    return { tier: "poor", maxCredit: 500 };
   }
 }

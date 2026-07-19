@@ -1,18 +1,20 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Job } from 'bullmq';
-import * as StellarSdk from 'stellar-sdk';
-import { SupabaseService } from '../../database/supabase.client';
-import { TransactionType } from '../../modules/transactions/dto/submit-transaction-request.dto';
-import { parseTransactionMetadata } from './transaction-metadata.util';
+import { Processor, WorkerHost } from "@nestjs/bullmq";
+import { Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Job } from "bullmq";
+import * as StellarSdk from "stellar-sdk";
+import { LoansRepository } from "../../database/repositories/loans.repository";
+import { NotificationsRepository } from "../../database/repositories/notifications.repository";
+import { TransactionsRepository } from "../../database/repositories/transactions.repository";
+import { TransactionType } from "../../modules/transactions/dto/submit-transaction-request.dto";
+import { parseTransactionMetadata } from "./transaction-metadata.util";
 
 interface PendingTransaction {
   id: string;
   user_wallet: string;
   transaction_hash: string;
   type: TransactionType;
-  status: 'pending' | 'success' | 'failed';
+  status: "pending" | "success" | "failed";
   xdr?: string | null;
   submitted_at: string;
   updated_at: string;
@@ -31,7 +33,7 @@ interface FollowUpResult {
   loanStatus?: string;
 }
 
-@Processor('transaction-status-checker')
+@Processor("transaction-status-checker")
 export class TransactionStatusCheckerProcessor extends WorkerHost {
   private readonly logger = new Logger(TransactionStatusCheckerProcessor.name);
   private readonly horizonServer: StellarSdk.Horizon.Server;
@@ -39,16 +41,18 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly supabaseService: SupabaseService,
+    private readonly transactionsRepository: TransactionsRepository,
+    private readonly loansRepository: LoansRepository,
+    private readonly notificationsRepository: NotificationsRepository,
   ) {
     super();
 
     const horizonUrl =
-      this.configService.get<string>('STELLAR_HORIZON_URL') ||
-      'https://horizon-testnet.stellar.org';
+      this.configService.get<string>("STELLAR_HORIZON_URL") ||
+      "https://horizon-testnet.stellar.org";
 
     this.networkPassphrase =
-      this.configService.get<string>('STELLAR_NETWORK_PASSPHRASE') ||
+      this.configService.get<string>("STELLAR_NETWORK_PASSPHRASE") ||
       StellarSdk.Networks.TESTNET;
 
     this.horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
@@ -58,10 +62,10 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
   async process(_job: Job): Promise<void> {
     this.logger.log(
       {
-        context: 'TransactionStatusCheckerProcessor',
-        action: 'process',
+        context: "TransactionStatusCheckerProcessor",
+        action: "process",
       },
-      'Transaction status checker job started',
+      "Transaction status checker job started",
     );
 
     try {
@@ -70,10 +74,10 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
       if (pending.length === 0) {
         this.logger.debug(
           {
-            context: 'TransactionStatusCheckerProcessor',
-            action: 'process',
+            context: "TransactionStatusCheckerProcessor",
+            action: "process",
           },
-          'No pending transactions found',
+          "No pending transactions found",
         );
         await this.cleanupOldTransactions();
         return;
@@ -81,8 +85,8 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
       this.logger.log(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'process',
+          context: "TransactionStatusCheckerProcessor",
+          action: "process",
           pendingCount: pending.length,
         },
         `Checking ${pending.length} pending transaction(s)`,
@@ -90,95 +94,108 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
       for (const transaction of pending) {
         try {
-          const status = await this.checkTransactionStatus(transaction.transaction_hash);
+          const status = await this.checkTransactionStatus(
+            transaction.transaction_hash,
+          );
 
           if (!status.found) {
             this.logger.debug(
               {
-                context: 'TransactionStatusCheckerProcessor',
-                action: 'checkTransactionStatus',
+                context: "TransactionStatusCheckerProcessor",
+                action: "checkTransactionStatus",
                 transactionHash: transaction.transaction_hash,
               },
-              'Transaction not found on Horizon yet — leaving pending',
+              "Transaction not found on Horizon yet — leaving pending",
             );
             continue;
           }
 
           if (status.successful === true) {
-            await this.finalizeTransaction(transaction, 'success', status.result, status.errorMessage);
+            await this.finalizeTransaction(
+              transaction,
+              "success",
+              status.result,
+              status.errorMessage,
+            );
           } else if (status.successful === false) {
-            await this.finalizeTransaction(transaction, 'failed', status.result, status.errorMessage);
+            await this.finalizeTransaction(
+              transaction,
+              "failed",
+              status.result,
+              status.errorMessage,
+            );
           } else {
             this.logger.debug(
               {
-                context: 'TransactionStatusCheckerProcessor',
-                action: 'checkTransactionStatus',
+                context: "TransactionStatusCheckerProcessor",
+                action: "checkTransactionStatus",
                 transactionHash: transaction.transaction_hash,
               },
-              'Horizon returned an unexpected transaction payload; leaving pending',
+              "Horizon returned an unexpected transaction payload; leaving pending",
             );
           }
         } catch (error) {
           this.logger.error(
             {
-              context: 'TransactionStatusCheckerProcessor',
-              action: 'processTransaction',
+              context: "TransactionStatusCheckerProcessor",
+              action: "processTransaction",
               transactionHash: transaction.transaction_hash,
               error: error?.message,
               stack: error?.stack,
             },
-            'Failed to process pending transaction — continuing with next',
+            "Failed to process pending transaction — continuing with next",
           );
         }
       }
     } catch (error) {
       this.logger.error(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'process',
+          context: "TransactionStatusCheckerProcessor",
+          action: "process",
           error: error?.message,
           stack: error?.stack,
         },
-        'Fatal error in transaction status checker',
+        "Fatal error in transaction status checker",
       );
     } finally {
       await this.cleanupOldTransactions();
       this.logger.log(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'process',
+          context: "TransactionStatusCheckerProcessor",
+          action: "process",
         },
-        'Transaction status checker job completed',
+        "Transaction status checker job completed",
       );
     }
   }
 
   private async fetchPendingTransactions(): Promise<PendingTransaction[]> {
-    const db = this.supabaseService.getServiceRoleClient();
-    const { data, error } = await db
-      .from('transactions')
-      .select(
-        'id, user_wallet, transaction_hash, type, status, xdr, submitted_at, updated_at',
-      )
-      .eq('status', 'pending')
-      .order('submitted_at', { ascending: true })
-      .limit(100);
-
-    if (error) {
-      throw new Error(`Failed to fetch pending transactions: ${error.message}`);
-    }
-
-    return (data ?? []) as PendingTransaction[];
+    const transactions = await this.transactionsRepository.findPending();
+    return transactions.map((transaction) => ({
+      id: transaction.id as string,
+      user_wallet: transaction.userWallet as string,
+      transaction_hash: transaction.hash,
+      type: transaction.type as TransactionType,
+      status: transaction.status as PendingTransaction["status"],
+      xdr: transaction.xdr,
+      submitted_at: transaction.submittedAt as string,
+      updated_at: transaction.updatedAt as string,
+    }));
   }
 
-  private async checkTransactionStatus(hash: string): Promise<TransactionStatusResult> {
+  private async checkTransactionStatus(
+    hash: string,
+  ): Promise<TransactionStatusResult> {
     const maxAttempts = 3;
     let attempt = 0;
 
     while (attempt < maxAttempts) {
       try {
         attempt += 1;
-        const response = await this.horizonServer.transactions().transaction(hash).call();
+        const response = await this.horizonServer
+          .transactions()
+          .transaction(hash)
+          .call();
         return {
           found: true,
           successful: response.successful === true,
@@ -197,14 +214,14 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
         const delayMs = 1000 * attempt;
         this.logger.warn(
           {
-            context: 'TransactionStatusCheckerProcessor',
-            action: 'checkTransactionStatus',
+            context: "TransactionStatusCheckerProcessor",
+            action: "checkTransactionStatus",
             transactionHash: hash,
             attempt,
             delayMs,
             error: error?.message,
           },
-          'Transient Horizon error — retrying',
+          "Transient Horizon error — retrying",
         );
         await this.wait(delayMs);
       }
@@ -244,13 +261,13 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
       return true;
     }
 
-    const message = String((error as any)?.message ?? '').toLowerCase();
+    const message = String((error as any)?.message ?? "").toLowerCase();
     return (
-      message.includes('timeout') ||
-      message.includes('rate limit') ||
-      message.includes('throttl') ||
-      message.includes('temporar') ||
-      message.includes('network')
+      message.includes("timeout") ||
+      message.includes("rate limit") ||
+      message.includes("throttl") ||
+      message.includes("temporar") ||
+      message.includes("network")
     );
   }
 
@@ -260,11 +277,10 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
   private async finalizeTransaction(
     transaction: PendingTransaction,
-    status: 'success' | 'failed',
+    status: "success" | "failed",
     result: unknown,
     errorMessage?: string,
   ): Promise<void> {
-    const db = this.supabaseService.getServiceRoleClient();
     const now = new Date().toISOString();
 
     const updatePayload: Record<string, unknown> = {
@@ -278,26 +294,21 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
       updatePayload.error = errorMessage;
     }
 
-    const { data, error } = await db
-      .from('transactions')
-      .update(updatePayload)
-      .eq('transaction_hash', transaction.transaction_hash)
-      .eq('status', 'pending')
-      .select('id, user_wallet, transaction_hash, type, xdr')
-      .single();
-
-    if (error) {
-      throw new Error(`Failed to update transaction ${transaction.transaction_hash}: ${error.message}`);
-    }
+    const data = await this.transactionsRepository.updateStatus(
+      transaction.transaction_hash,
+      status,
+      updatePayload,
+      { onlyPending: true, returnRecord: true },
+    );
 
     if (!data) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'finalizeTransaction',
+          context: "TransactionStatusCheckerProcessor",
+          action: "finalizeTransaction",
           transactionHash: transaction.transaction_hash,
         },
-        'Transaction record was already updated by another worker or no longer pending',
+        "Transaction record was already updated by another worker or no longer pending",
       );
       return;
     }
@@ -307,8 +318,8 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
     this.logger.log(
       {
-        context: 'TransactionStatusCheckerProcessor',
-        action: 'finalizeTransaction',
+        context: "TransactionStatusCheckerProcessor",
+        action: "finalizeTransaction",
         transactionHash: transaction.transaction_hash,
         status,
       },
@@ -318,9 +329,9 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
   private async applyFollowUpActions(
     transaction: PendingTransaction,
-    status: 'success' | 'failed',
+    status: "success" | "failed",
   ): Promise<FollowUpResult> {
-    if (status !== 'success') {
+    if (status !== "success") {
       return {};
     }
 
@@ -348,8 +359,15 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
       return this.activatePendingLoan(metadata.loanId, transaction.user_wallet);
     }
 
-    if (transaction.type === TransactionType.LOAN_REPAY && typeof metadata.amount === 'number') {
-      return this.applyLoanRepayment(metadata.loanId, transaction.user_wallet, metadata.amount);
+    if (
+      transaction.type === TransactionType.LOAN_REPAY &&
+      typeof metadata.amount === "number"
+    ) {
+      return this.applyLoanRepayment(
+        metadata.loanId,
+        transaction.user_wallet,
+        metadata.amount,
+      );
     }
 
     return { loanId: metadata.loanId };
@@ -359,54 +377,64 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
     loanId: string,
     userWallet: string,
   ): Promise<FollowUpResult> {
-    const db = this.supabaseService.getServiceRoleClient();
-
-    const { data: loan, error } = await db
-      .from('loans')
-      .select('loan_id, status')
-      .eq('loan_id', loanId)
-      .eq('user_wallet', userWallet)
-      .single();
-
-    if (error || !loan) {
+    let loan: { loan_id: string; status: string } | null;
+    try {
+      loan = await this.loansRepository.findStatusByLoanIdAndWallet(
+        loanId,
+        userWallet,
+      );
+    } catch (error) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'activatePendingLoan',
+          context: "TransactionStatusCheckerProcessor",
+          action: "activatePendingLoan",
           loanId,
           userWallet,
           error: error?.message,
         },
-        'Pending loan not found for loan_create transaction',
+        "Pending loan not found for loan_create transaction",
       );
       return { loanId };
     }
 
-    if (loan.status !== 'pending') {
+    if (!loan) {
+      this.logger.warn(
+        {
+          context: "TransactionStatusCheckerProcessor",
+          action: "activatePendingLoan",
+          loanId,
+          userWallet,
+        },
+        "Pending loan not found for loan_create transaction",
+      );
+      return { loanId };
+    }
+
+    if (loan.status !== "pending") {
       return { loanId, loanStatus: loan.status };
     }
 
-    const { error: updateError } = await db
-      .from('loans')
-      .update({ status: 'active', updated_at: new Date().toISOString() })
-      .eq('loan_id', loanId)
-      .eq('user_wallet', userWallet)
-      .eq('status', 'pending');
-
-    if (updateError) {
+    try {
+      await this.loansRepository.updateStatus(
+        loanId,
+        userWallet,
+        "active",
+        "pending",
+      );
+    } catch (error) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'activatePendingLoan',
+          context: "TransactionStatusCheckerProcessor",
+          action: "activatePendingLoan",
           loanId,
-          error: updateError.message,
+          error: error.message,
         },
-        'Failed to update pending loan status after successful transaction',
+        "Failed to update pending loan status after successful transaction",
       );
       return { loanId };
     }
 
-    return { loanId, loanStatus: 'active' };
+    return { loanId, loanStatus: "active" };
   }
 
   private async applyLoanRepayment(
@@ -414,32 +442,45 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
     userWallet: string,
     amount: number,
   ): Promise<FollowUpResult> {
-    const db = this.supabaseService.getServiceRoleClient();
-
-    const { data: loan, error: fetchError } = await db
-      .from('loans')
-      .select('remaining_balance, status')
-      .eq('loan_id', loanId)
-      .eq('user_wallet', userWallet)
-      .single();
-
-    if (fetchError || !loan) {
+    let loan: { remaining_balance: number | string; status: string } | null;
+    try {
+      loan = await this.loansRepository.findBalanceByLoanIdAndWallet(
+        loanId,
+        userWallet,
+      );
+    } catch (error) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'applyLoanRepayment',
+          context: "TransactionStatusCheckerProcessor",
+          action: "applyLoanRepayment",
           loanId,
           userWallet,
-          error: fetchError?.message,
+          error: error?.message,
         },
-        'Loan not found for loan_repay transaction',
+        "Loan not found for loan_repay transaction",
+      );
+      return { loanId };
+    }
+
+    if (!loan) {
+      this.logger.warn(
+        {
+          context: "TransactionStatusCheckerProcessor",
+          action: "applyLoanRepayment",
+          loanId,
+          userWallet,
+        },
+        "Loan not found for loan_repay transaction",
       );
       return { loanId };
     }
 
     const currentBalance = Number(loan.remaining_balance ?? 0);
-    const updatedBalance = Math.max(0, Math.round((currentBalance - amount) * 100) / 100);
-    const updatedStatus = updatedBalance === 0 ? 'completed' : loan.status;
+    const updatedBalance = Math.max(
+      0,
+      Math.round((currentBalance - amount) * 100) / 100,
+    );
+    const updatedStatus = updatedBalance === 0 ? "completed" : loan.status;
     const updatePayload: Record<string, unknown> = {
       remaining_balance: updatedBalance,
       updated_at: new Date().toISOString(),
@@ -447,40 +488,43 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
 
     if (updatedStatus !== loan.status) {
       updatePayload.status = updatedStatus;
-      if (updatedStatus === 'completed') {
+      if (updatedStatus === "completed") {
         updatePayload.completed_at = new Date().toISOString();
       }
     }
 
-    const { error: updateError } = await db
-      .from('loans')
-      .update(updatePayload)
-      .eq('loan_id', loanId)
-      .eq('user_wallet', userWallet);
-
-    if (updateError) {
+    try {
+      await this.loansRepository.updateByLoanIdAndWallet(
+        loanId,
+        userWallet,
+        updatePayload,
+      );
+    } catch (error) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'applyLoanRepayment',
+          context: "TransactionStatusCheckerProcessor",
+          action: "applyLoanRepayment",
           loanId,
-          error: updateError.message,
+          error: error.message,
         },
-        'Failed to update loan balance after successful repayment',
+        "Failed to update loan balance after successful repayment",
       );
       return { loanId };
     }
 
-    return { loanId, remainingBalance: updatedBalance, loanStatus: updatedStatus };
+    return {
+      loanId,
+      remainingBalance: updatedBalance,
+      loanStatus: updatedStatus,
+    };
   }
 
   private async createNotification(
     transaction: PendingTransaction,
-    status: 'success' | 'failed',
+    status: "success" | "failed",
     errorMessage?: string,
     followUp: FollowUpResult = {},
   ): Promise<void> {
-    const db = this.supabaseService.getServiceRoleClient();
     const { title, message, type } = this.buildNotificationPayload(
       transaction,
       status,
@@ -501,83 +545,81 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
       is_read: false,
     };
 
-    const { error } = await db.from('notifications').insert(notificationPayload);
-    if (error) {
+    try {
+      await this.notificationsRepository.create(notificationPayload);
+    } catch (error) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'createNotification',
+          context: "TransactionStatusCheckerProcessor",
+          action: "createNotification",
           transactionHash: transaction.transaction_hash,
           error: error.message,
         },
-        'Failed to create user notification for finalized transaction',
+        "Failed to create user notification for finalized transaction",
       );
     }
   }
 
   private buildNotificationPayload(
     transaction: PendingTransaction,
-    status: 'success' | 'failed',
+    status: "success" | "failed",
     errorMessage: string | undefined,
     followUp: FollowUpResult,
   ): { type: string; title: string; message: string } {
-    if (status === 'failed') {
+    if (status === "failed") {
       return {
-        type: 'transaction_failed',
-        title: 'Transaction Failed',
-        message: `Your ${transaction.type.replace('_', ' ')} transaction failed on Stellar.${
-          errorMessage ? ` ${errorMessage}` : ''
+        type: "transaction_failed",
+        title: "Transaction Failed",
+        message: `Your ${transaction.type.replace("_", " ")} transaction failed on Stellar.${
+          errorMessage ? ` ${errorMessage}` : ""
         }`,
       };
     }
 
     if (transaction.type === TransactionType.LOAN_CREATE) {
       return {
-        type: 'loan_create_success',
-        title: 'Loan Activated',
+        type: "loan_create_success",
+        title: "Loan Activated",
         message: followUp.loanId
           ? `Your loan ${followUp.loanId} is now active after Stellar confirmation.`
-          : 'Your loan creation transaction was confirmed on Stellar and your loan is now active.',
+          : "Your loan creation transaction was confirmed on Stellar and your loan is now active.",
       };
     }
 
     if (transaction.type === TransactionType.LOAN_REPAY) {
-      const amountMessage = followUp.remainingBalance !== undefined
-        ? ` Remaining balance is $${followUp.remainingBalance.toFixed(2)}.`
-        : '';
+      const amountMessage =
+        followUp.remainingBalance !== undefined
+          ? ` Remaining balance is $${followUp.remainingBalance.toFixed(2)}.`
+          : "";
 
       return {
-        type: 'loan_repay_success',
-        title: 'Loan Payment Confirmed',
+        type: "loan_repay_success",
+        title: "Loan Payment Confirmed",
         message: `Your loan repayment transaction was confirmed on Stellar.${amountMessage}`,
       };
     }
 
     return {
-      type: 'transaction_success',
-      title: 'Transaction Confirmed',
-      message: `Your ${transaction.type.replace('_', ' ')} transaction was confirmed on Stellar.`,
+      type: "transaction_success",
+      title: "Transaction Confirmed",
+      message: `Your ${transaction.type.replace("_", " ")} transaction was confirmed on Stellar.`,
     };
   }
 
   private async cleanupOldTransactions(): Promise<void> {
-    const threshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const db = this.supabaseService.getServiceRoleClient();
-
-    const { error } = await db
-      .from('transactions')
-      .delete()
-      .lt('submitted_at', threshold)
-      .neq('status', 'pending');
-
-    if (error) {
+    const threshold = new Date(
+      Date.now() - 7 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    try {
+      await this.transactionsRepository.deleteOlderThan(threshold);
+    } catch (error) {
       this.logger.warn(
         {
-          context: 'TransactionStatusCheckerProcessor',
-          action: 'cleanupOldTransactions',
+          context: "TransactionStatusCheckerProcessor",
+          action: "cleanupOldTransactions",
           error: error.message,
         },
-        'Failed to clean up old transaction records',
+        "Failed to clean up old transaction records",
       );
     }
   }

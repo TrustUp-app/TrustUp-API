@@ -3,20 +3,22 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
-} from '@nestjs/common';
-import { SupabaseService } from '../../database/supabase.client';
-import { NotificationListQueryDto } from './dto/notification-list-query.dto';
+} from "@nestjs/common";
+import { NotificationsRepository } from "../../database/repositories/notifications.repository";
+import { NotificationListQueryDto } from "./dto/notification-list-query.dto";
 import {
   NotificationItemDto,
   NotificationListResponseDto,
-} from './dto/notification-list-response.dto';
-import { MarkAsReadResponseDto } from './dto/mark-as-read-response.dto';
+} from "./dto/notification-list-response.dto";
+import { MarkAsReadResponseDto } from "./dto/mark-as-read-response.dto";
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly notificationsRepository: NotificationsRepository,
+  ) {}
 
   async getNotifications(
     wallet: string,
@@ -24,50 +26,19 @@ export class NotificationsService {
   ): Promise<NotificationListResponseDto> {
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
-    const client = this.supabaseService.getServiceRoleClient();
-
-    let notificationsQuery = client
-      .from('notifications')
-      .select('id, type, title, message, data, is_read, created_at, read_at', {
-        count: 'exact',
-      })
-      .eq('user_wallet', wallet)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (query.unread === true) {
-      notificationsQuery = notificationsQuery.eq('is_read', false);
-    }
-
-    if (query.type) {
-      notificationsQuery = notificationsQuery.eq('type', query.type);
-    }
-
-    const { data: notifications, error, count } = await notificationsQuery;
-
-    if (error) {
-      this.logger.error(
-        `Failed to fetch notifications for ${wallet}: ${error.message}`,
-      );
-      throw new Error(error.message);
-    }
-
-    const { count: unreadCount, error: unreadError } = await client
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_wallet', wallet)
-      .eq('is_read', false);
-
-    if (unreadError) {
-      this.logger.error(
-        `Failed to fetch unread count for ${wallet}: ${unreadError.message}`,
-      );
-      throw new Error(unreadError.message);
-    }
+    const [{ notifications, total }, unreadCount] = await Promise.all([
+      this.notificationsRepository.findByUser(wallet, {
+        limit,
+        offset,
+        unread: query.unread,
+        type: query.type,
+      }),
+      this.notificationsRepository.countUnread(wallet),
+    ]);
 
     const data: NotificationItemDto[] = (notifications ?? []).map((n) => ({
       id: n.id,
-      type: n.type,
+      type: n.type as NotificationItemDto["type"],
       title: n.title,
       message: n.message,
       data: n.data ?? {},
@@ -81,9 +52,9 @@ export class NotificationsService {
       pagination: {
         limit,
         offset,
-        total: count ?? 0,
+        total,
       },
-      unreadCount: unreadCount ?? 0,
+      unreadCount,
     };
   }
 
@@ -91,25 +62,20 @@ export class NotificationsService {
     wallet: string,
     notificationId: string,
   ): Promise<MarkAsReadResponseDto> {
-    const client = this.supabaseService.getServiceRoleClient();
+    const notification =
+      await this.notificationsRepository.findById(notificationId);
 
-    const { data: notification, error: fetchError } = await client
-      .from('notifications')
-      .select('id, user_wallet, is_read')
-      .eq('id', notificationId)
-      .single();
-
-    if (fetchError || !notification) {
+    if (!notification) {
       throw new NotFoundException({
-        code: 'NOTIFICATION_NOT_FOUND',
-        message: 'Notification not found',
+        code: "NOTIFICATION_NOT_FOUND",
+        message: "Notification not found",
       });
     }
 
     if (notification.user_wallet !== wallet) {
       throw new ForbiddenException({
-        code: 'NOTIFICATION_FORBIDDEN',
-        message: 'You do not have permission to update this notification',
+        code: "NOTIFICATION_FORBIDDEN",
+        message: "You do not have permission to update this notification",
       });
     }
 
@@ -118,39 +84,18 @@ export class NotificationsService {
     }
 
     const now = new Date().toISOString();
-    const { error: updateError } = await client
-      .from('notifications')
-      .update({ is_read: true, read_at: now, updated_at: now })
-      .eq('id', notificationId);
-
-    if (updateError) {
-      this.logger.error(
-        `Failed to mark notification ${notificationId} as read: ${updateError.message}`,
-      );
-      throw new Error(updateError.message);
-    }
+    await this.notificationsRepository.markAsRead(notificationId, now);
 
     return { success: true, updatedCount: 1 };
   }
 
   async markAllAsRead(wallet: string): Promise<MarkAsReadResponseDto> {
-    const client = this.supabaseService.getServiceRoleClient();
-
     const now = new Date().toISOString();
-    const { data, error } = await client
-      .from('notifications')
-      .update({ is_read: true, read_at: now, updated_at: now })
-      .eq('user_wallet', wallet)
-      .eq('is_read', false)
-      .select('id');
+    const updatedCount = await this.notificationsRepository.markAllAsRead(
+      wallet,
+      now,
+    );
 
-    if (error) {
-      this.logger.error(
-        `Failed to mark all notifications as read for ${wallet}: ${error.message}`,
-      );
-      throw new Error(error.message);
-    }
-
-    return { success: true, updatedCount: data?.length ?? 0 };
+    return { success: true, updatedCount };
   }
 }
