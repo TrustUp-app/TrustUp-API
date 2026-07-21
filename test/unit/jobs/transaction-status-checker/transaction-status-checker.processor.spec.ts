@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import * as StellarSdk from 'stellar-sdk';
+import { LoansRepository } from '../../../../src/database/repositories/loans.repository';
+import { NotificationsRepository } from '../../../../src/database/repositories/notifications.repository';
+import { TransactionsRepository } from '../../../../src/database/repositories/transactions.repository';
 import { TransactionStatusCheckerProcessor } from '../../../../src/jobs/transaction-status-checker/transaction-status-checker.processor';
 import { SupabaseService } from '../../../../src/database/supabase.client';
 import { createMockJob, createSupabaseChainMock } from '../../../helpers/job.helpers';
@@ -57,6 +60,9 @@ describe('TransactionStatusCheckerProcessor', () => {
         TransactionStatusCheckerProcessor,
         { provide: SupabaseService, useValue: mockSupabaseService },
         { provide: ConfigService, useValue: mockConfigService },
+        TransactionsRepository,
+        LoansRepository,
+        NotificationsRepository,
       ],
     }).compile();
 
@@ -97,11 +103,11 @@ describe('TransactionStatusCheckerProcessor', () => {
 
       transactionsChain.limit.mockResolvedValue({ data: [tx], error: null });
       mockCall.mockResolvedValue({ successful: true, result_codes: undefined });
-      transactionsChain.single.mockResolvedValue({
+      transactionsChain.maybeSingle.mockResolvedValue({
         data: { id: tx.id, user_wallet: tx.user_wallet, transaction_hash: tx.transaction_hash, type: tx.type, xdr: tx.xdr },
         error: null,
       });
-      loansChain.single.mockResolvedValue({
+      loansChain.maybeSingle.mockResolvedValue({
         data: { loan_id: 'LOAN-FIXTURE-001', status: 'pending' },
         error: null,
       });
@@ -125,11 +131,11 @@ describe('TransactionStatusCheckerProcessor', () => {
 
       transactionsChain.limit.mockResolvedValue({ data: [tx], error: null });
       mockCall.mockResolvedValue({ successful: true });
-      transactionsChain.single.mockResolvedValue({
+      transactionsChain.maybeSingle.mockResolvedValue({
         data: { id: tx.id, user_wallet: tx.user_wallet, transaction_hash: tx.transaction_hash, type: tx.type, xdr: tx.xdr },
         error: null,
       });
-      loansChain.single.mockResolvedValue({
+      loansChain.maybeSingle.mockResolvedValue({
         data: { loan_id: 'LOAN-FIXTURE-001', status: 'active' },
         error: null,
       });
@@ -154,11 +160,11 @@ describe('TransactionStatusCheckerProcessor', () => {
 
       transactionsChain.limit.mockResolvedValue({ data: [tx], error: null });
       mockCall.mockResolvedValue({ successful: true });
-      transactionsChain.single.mockResolvedValue({
+      transactionsChain.maybeSingle.mockResolvedValue({
         data: { id: tx.id, user_wallet: tx.user_wallet, transaction_hash: tx.transaction_hash, type: tx.type, xdr: tx.xdr },
         error: null,
       });
-      loansChain.single.mockResolvedValue({
+      loansChain.maybeSingle.mockResolvedValue({
         data: { remaining_balance: '200', status: 'active' },
         error: null,
       });
@@ -181,11 +187,11 @@ describe('TransactionStatusCheckerProcessor', () => {
 
       transactionsChain.limit.mockResolvedValue({ data: [tx], error: null });
       mockCall.mockResolvedValue({ successful: true });
-      transactionsChain.single.mockResolvedValue({
+      transactionsChain.maybeSingle.mockResolvedValue({
         data: { id: tx.id, user_wallet: tx.user_wallet, transaction_hash: tx.transaction_hash, type: tx.type, xdr: tx.xdr },
         error: null,
       });
-      loansChain.single.mockResolvedValue({
+      loansChain.maybeSingle.mockResolvedValue({
         data: { remaining_balance: '50', status: 'active' },
         error: null,
       });
@@ -241,7 +247,7 @@ describe('TransactionStatusCheckerProcessor', () => {
 
       transactionsChain.limit.mockResolvedValue({ data: [tx], error: null });
       mockCall.mockResolvedValue({ successful: true });
-      transactionsChain.single.mockResolvedValue({
+      transactionsChain.maybeSingle.mockResolvedValue({
         data: { id: tx.id, user_wallet: tx.user_wallet, transaction_hash: tx.transaction_hash, type: tx.type, xdr: tx.xdr },
         error: null,
       });
