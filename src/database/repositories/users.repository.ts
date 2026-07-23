@@ -206,8 +206,12 @@ export class UsersRepository {
         return { ...(user as Omit<UserRecord, 'user_preferences'>), user_preferences: null };
     }
 
-    async uploadAvatar(walletAddress: string, file: any): Promise<string> {
-        const fileExt = file.originalname.split('.').pop();
+    async uploadAvatar(
+        walletAddress: string,
+        file: { buffer: Buffer; mimetype: string; originalname?: string; filename?: string },
+    ): Promise<string> {
+        const name = file.originalname || file.filename || 'avatar.png';
+        const fileExt = name.split('.').pop() || 'png';
         const fileName = `${walletAddress}-${Date.now()}.${fileExt}`;
         const client = this.supabaseService.getServiceRoleClient();
 

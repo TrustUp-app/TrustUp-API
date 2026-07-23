@@ -1,6 +1,8 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyMultipart from '@fastify/multipart';
+import { env } from './config/env';
 import { AppModule } from './app.module';
 
 const BANNER = `
@@ -20,6 +22,13 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   );
+
+  const maxFileSizeMb = env.MAX_FILE_SIZE_MB || 5;
+  await app.register(fastifyMultipart as any, {
+    limits: {
+      fileSize: maxFileSizeMb * 1024 * 1024,
+    },
+  });
 
   const port = process.env.PORT || 4000;
   const apiPrefix = process.env.API_PREFIX || 'api/v1';

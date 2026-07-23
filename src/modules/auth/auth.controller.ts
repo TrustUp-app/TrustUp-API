@@ -4,18 +4,13 @@ import {
   Delete,
   Body, 
   HttpCode, 
-  HttpStatus, 
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-  UseInterceptors, 
-  UploadedFile, 
-  ParseFilePipe, 
-  MaxFileSizeValidator, 
-  FileTypeValidator 
+  HttpStatus,
+  Req,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service';
 import { NonceRequestDto } from './dto/nonce-request.dto';
 import { NonceResponseDto } from './dto/nonce-response.dto';
@@ -24,12 +19,7 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { RegisterRequestDto } from './dto/register-request.dto';
 import { RefreshTokenDto, RefreshTokenSchema } from './dto/refresh-token.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-
-class OptionalProfileImageInterceptor implements NestInterceptor {
-  intercept(_context: ExecutionContext, next: CallHandler) {
-    return next.handle();
-  }
-}
+import { ALLOWED_MIME_TYPES } from '../../config/env';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -41,7 +31,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({
     summary: 'Register a new user account with complete profile',
-    description: 'Creates a new user account. Accepts multipart/form-data with wallet address, username, display name, terms acceptance, and an optional profile image (max 2MB, JPEG/PNG/WebP). Issues JWT tokens immediately on success.',
+    description: 'Creates a new user account. Accepts multipart/form-data with wallet address, username, display name, terms acceptance, and an optional profile image (max 5MB, JPEG/PNG/WebP). Issues JWT tokens immediately on success.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: RegisterRequestDto })
@@ -51,21 +41,34 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'Validation failed or invalid image upload format/size' })
   @ApiResponse({ status: 409, description: 'Wallet address or username already exists' })
-  @UseInterceptors(OptionalProfileImageInterceptor)
   async register(
+    @Req() req: FastifyRequest,
     @Body() dto: RegisterRequestDto,
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB restriction
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/i }), // Format restriction
-        ],
-        fileIsRequired: false,
-      }),
-    )
-    profileImage?: any,
   ): Promise<any> {
-    return this.authService.register(dto, profileImage);
+    let profileFile:
+      | { buffer: Buffer; mimetype: string; filename: string; originalname: string }
+      | undefined;
+
+    if (req.isMultipart && req.isMultipart()) {
+      const part = await req.file();
+      if (part) {
+        if (!ALLOWED_MIME_TYPES.includes(part.mimetype)) {
+          throw new BadRequestException({
+            code: 'FILE_INVALID_TYPE',
+            message: 'Invalid file type. Allowed types: image/jpeg, image/png, image/webp',
+          });
+        }
+        const buffer = await part.toBuffer();
+        profileFile = {
+          buffer,
+          mimetype: part.mimetype,
+          filename: part.filename,
+          originalname: part.filename,
+        };
+      }
+    }
+
+    return this.authService.register(dto, profileFile);
   }
 
   @Post('nonce')
