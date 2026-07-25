@@ -8,9 +8,9 @@
     "trustup-docs-mcp": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/index.js",
+    "build": "node init && tsc",
+    "dev": "node init && tsc --watch",
+    "start": "node init && node dist/index.js",
     "prepare": "npm run build"
   },
   "keywords": [
