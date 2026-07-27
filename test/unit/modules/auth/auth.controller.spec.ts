@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from '../../../../src/modules/auth/auth.controller';
 import { AuthService } from '../../../../src/modules/auth/auth.service';
@@ -14,6 +15,7 @@ describe('AuthController', () => {
   };
 
   const mockAuthService = {
+    register: jest.fn(),
     generateNonce: jest.fn(),
     verifySignature: jest.fn().mockResolvedValue(undefined),
     generateTokens: jest.fn().mockResolvedValue(expectedTokens),
@@ -44,6 +46,105 @@ describe('AuthController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /auth/register
+  // ---------------------------------------------------------------------------
+  describe('register', () => {
+    const registerDto = {
+      walletAddress: validWallet,
+      username: 'testuser',
+      displayName: 'Test User',
+      termsAccepted: 'true',
+    };
+
+    it('should register successfully with a valid profile image', async () => {
+      const imageBuffer = Buffer.from('fake-image-bytes');
+      const mockReq = {
+        isMultipart: () => true,
+        file: jest.fn().mockResolvedValue({
+          mimetype: 'image/png',
+          filename: 'avatar.png',
+          toBuffer: jest.fn().mockResolvedValue(imageBuffer),
+        }),
+      } as any;
+
+      const mockResponse = {
+        user: {
+          id: 'user-uuid',
+          walletAddress: validWallet,
+          username: 'testuser',
+          displayName: 'Test User',
+          avatarUrl: 'https://supabase.co/storage/v1/object/public/avatars/avatar.png',
+          createdAt: new Date().toISOString(),
+        },
+        ...expectedTokens,
+      };
+
+      mockAuthService.register.mockResolvedValue(mockResponse);
+
+      const result = await controller.register(mockReq, registerDto);
+
+      expect(result).toEqual(mockResponse);
+      expect(result.user.avatarUrl).toBe('https://supabase.co/storage/v1/object/public/avatars/avatar.png');
+      expect(authService.register).toHaveBeenCalledWith(registerDto, {
+        buffer: imageBuffer,
+        mimetype: 'image/png',
+        filename: 'avatar.png',
+        originalname: 'avatar.png',
+      });
+    });
+
+    it('should register successfully without a profile image (avatarUrl is null)', async () => {
+      const mockReq = {
+        isMultipart: () => false,
+      } as any;
+
+      const mockResponse = {
+        user: {
+          id: 'user-uuid',
+          walletAddress: validWallet,
+          username: 'testuser',
+          displayName: 'Test User',
+          avatarUrl: null,
+          createdAt: new Date().toISOString(),
+        },
+        ...expectedTokens,
+      };
+
+      mockAuthService.register.mockResolvedValue(mockResponse);
+
+      const result = await controller.register(mockReq, registerDto);
+
+      expect(result).toEqual(mockResponse);
+      expect(result.user.avatarUrl).toBeNull();
+      expect(authService.register).toHaveBeenCalledWith(registerDto, undefined);
+    });
+
+    it('should throw BadRequestException (400) with code FILE_INVALID_TYPE when file MIME type is invalid', async () => {
+      const mockReq = {
+        isMultipart: () => true,
+        file: jest.fn().mockResolvedValue({
+          mimetype: 'application/pdf',
+          filename: 'doc.pdf',
+          toBuffer: jest.fn(),
+        }),
+      } as any;
+
+      await expect(controller.register(mockReq, registerDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      try {
+        await controller.register(mockReq, registerDto);
+      } catch (err: any) {
+        expect(err.getResponse()).toEqual({
+          code: 'FILE_INVALID_TYPE',
+          message: 'Invalid file type. Allowed types: image/jpeg, image/png, image/webp',
+        });
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------

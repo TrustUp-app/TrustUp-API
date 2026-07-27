@@ -6,8 +6,10 @@ import { LiquidityController } from './liquidity.controller';
 import { LiquidityService } from './liquidity.service';
 import { AuthModule } from '../auth/auth.module';
 import { SupabaseService } from '../../database/supabase.client';
+import { LiquidityRepository } from '../../database/repositories/liquidity.repository';
 import { SorobanService } from '../../blockchain/soroban/soroban.service';
 import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-contract.client';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 
 @Module({
   imports: [
@@ -23,7 +25,14 @@ import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-co
     }),
   ],
   controllers: [LiquidityController],
-  providers: [LiquidityService, SupabaseService, SorobanService, LiquidityContractClient],
+  providers: [
+    LiquidityService,
+    LiquidityRepository,
+    SupabaseService,
+    SorobanService,
+    LiquidityContractClient,
+    IdempotencyInterceptor,
+  ],
   exports: [LiquidityService],
 })
 export class LiquidityModule {}

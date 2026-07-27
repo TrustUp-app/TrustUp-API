@@ -31,6 +31,7 @@ export function createSupabaseChainMock(overrides: Record<string, unknown> = {})
     not: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
     single: jest.fn().mockResolvedValue({ data: null, error: null }),
   };
   Object.assign(chain, overrides);

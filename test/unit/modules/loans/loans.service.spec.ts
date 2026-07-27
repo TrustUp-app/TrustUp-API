@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { LoansService } from '../../../../src/modules/loans/loans.service';
 import { ReputationService } from '../../../../src/modules/reputation/reputation.service';
+import { LoansRepository } from '../../../../src/database/repositories/loans.repository';
+import { MerchantsRepository } from '../../../../src/database/repositories/merchants.repository';
 import { SupabaseService } from '../../../../src/database/supabase.client';
 import { CreditLineContractClient } from '../../../../src/blockchain/contracts/credit-line-contract.client';
 import { ReputationContractClient } from '../../../../src/blockchain/contracts/reputation-contract.client';
@@ -29,7 +31,9 @@ describe('LoansService', () => {
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     single: jest.fn(),
+    maybeSingle: jest.fn(),
     insert: jest.fn(),
+    update: jest.fn().mockReturnThis(),
   };
 
   const mockSupabaseClient = {
@@ -37,6 +41,7 @@ describe('LoansService', () => {
   };
 
   const mockSupabaseService = {
+    getClient: jest.fn().mockReturnValue(mockSupabaseClient),
     getServiceRoleClient: jest.fn().mockReturnValue(mockSupabaseClient),
   };
 
@@ -57,6 +62,8 @@ describe('LoansService', () => {
         { provide: SupabaseService, useValue: mockSupabaseService },
         { provide: CreditLineContractClient, useValue: mockCreditLineContractClient },
         { provide: ReputationContractClient, useValue: mockReputationContractClient },
+        LoansRepository,
+        MerchantsRepository,
       ],
     }).compile();
 
@@ -69,7 +76,9 @@ describe('LoansService', () => {
     mockSupabaseFrom.in.mockReturnThis();
     mockSupabaseFrom.order.mockReturnThis();
     mockSupabaseFrom.range.mockReturnThis();
+    mockSupabaseFrom.update.mockReturnThis();
     mockSupabaseFrom.insert.mockResolvedValue({ error: null });
+    mockSupabaseFrom.maybeSingle.mockResolvedValue({ data: null, error: null });
     mockCreditLineContractClient.buildCreateLoanTransaction.mockResolvedValue('AAAAAgAAAAC...');
     mockCreditLineContractClient.buildRepayLoanTx.mockResolvedValue('AAAAAgAAAAA...');
   });
@@ -106,7 +115,7 @@ describe('LoansService', () => {
     function mockMerchantNotFound() {
       mockSupabaseFrom.single.mockResolvedValue({
         data: null,
-        error: { message: 'not found' },
+        error: null,
       });
     }
 
@@ -272,6 +281,17 @@ describe('LoansService', () => {
       );
     });
 
+    it('should reject an existing pending loan with the same XDR hash', async () => {
+      mockReputation(75, 'silver', 8, 2000);
+      mockMerchantFound();
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({ data: { id: 'existing-loan' }, error: null });
+
+      await expect(service.createLoan(validWallet, baseDto)).rejects.toMatchObject({
+        response: { code: 'LOAN_DUPLICATE_PENDING' },
+      });
+      expect(mockSupabaseFrom.insert).not.toHaveBeenCalled();
+    });
+
     it('should reject loan creation when reputation is below minimum threshold', async () => {
       mockReputation(59, 'poor', 12, 500);
       mockMerchantFound();
@@ -324,7 +344,7 @@ describe('LoansService', () => {
     const loanId = '11111111-2222-3333-4444-555555555555';
 
     function mockActiveLoan(overrides: Record<string, unknown> = {}) {
-      mockSupabaseFrom.single.mockResolvedValue({
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({
         data: {
           id: loanId,
           loan_id: 'chain-loan-1',
@@ -359,9 +379,9 @@ describe('LoansService', () => {
     });
 
     it('should throw NotFoundException when loan does not exist', async () => {
-      mockSupabaseFrom.single.mockResolvedValue({
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({
         data: null,
-        error: { message: 'not found' },
+        error: null,
       });
 
       await expect(service.repayLoan(validWallet, loanId, { amount: 50 })).rejects.toThrow(

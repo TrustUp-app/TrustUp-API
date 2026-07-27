@@ -4,6 +4,7 @@ import { BadRequestException, HttpException } from '@nestjs/common';
 import { LiquidityService } from '../../../../src/modules/liquidity/liquidity.service';
 import { LiquidityContractClient } from '../../../../src/blockchain/contracts/liquidity-contract.client';
 import { SupabaseService } from '../../../../src/database/supabase.client';
+import { LiquidityRepository } from '../../../../src/database/repositories/liquidity.repository';
 
 describe('LiquidityService', () => {
   let service: LiquidityService;
@@ -46,6 +47,7 @@ describe('LiquidityService', () => {
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: SupabaseService, useValue: mockSupabaseService },
         { provide: LiquidityContractClient, useValue: mockLiquidityContractClient },
+        LiquidityRepository,
       ],
     }).compile();
 
@@ -71,7 +73,7 @@ describe('LiquidityService', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          single: jest.fn().mockResolvedValue({
+          maybeSingle: jest.fn().mockResolvedValue({
             data: { deposited_amount: 1000 },
             error: null,
           }),
@@ -392,7 +394,7 @@ describe('LiquidityService', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
-            single: jest.fn().mockResolvedValue({
+            maybeSingle: jest.fn().mockResolvedValue({
               data: { deposited_amount: 1000 },
               error: null,
             }),
@@ -451,7 +453,7 @@ describe('LiquidityService', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
-            single: jest.fn().mockResolvedValue({
+            maybeSingle: jest.fn().mockResolvedValue({
               data: null,
               error: { message: 'not found' },
             }),

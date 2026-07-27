@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { SupabaseService } from '../../../../src/database/supabase.client';
+import { NotificationsRepository } from '../../../../src/database/repositories/notifications.repository';
 import { NotificationsService } from '../../../../src/modules/notifications/notifications.service';
 
 type SupabaseResult<T> = {
@@ -17,6 +18,7 @@ function createQueryBuilder<T>(result: SupabaseResult<T>) {
     range: jest.fn().mockReturnThis(),
     update: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue(result),
+    maybeSingle: jest.fn().mockResolvedValue(result),
     then: jest.fn((resolve, reject) =>
       Promise.resolve(result).then(resolve, reject),
     ),
@@ -54,6 +56,7 @@ describe('NotificationsService', () => {
       providers: [
         NotificationsService,
         { provide: SupabaseService, useValue: mockSupabaseService },
+        NotificationsRepository,
       ],
     }).compile();
 
@@ -311,7 +314,7 @@ describe('NotificationsService', () => {
     it('throws NotFoundException for non-existent notification IDs', async () => {
       const fetchQuery = createQueryBuilder({
         data: null,
-        error: { message: 'not found' },
+        error: null,
       });
       mockClientWithQueries(fetchQuery);
 

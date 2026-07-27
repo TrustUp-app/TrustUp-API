@@ -39,7 +39,10 @@ export class AuthService {
    * Registers a new user with comprehensive profile information.
    * Handles duplicate checking, optional image upload, user creation, and issues JWT tokens.
    */
-  async register(dto: RegisterRequestDto, profileImage?: any): Promise<any> {
+  async register(
+    dto: RegisterRequestDto,
+    profileImage?: { buffer: Buffer; mimetype: string; originalname?: string; filename?: string },
+  ): Promise<any> {
     // 1. Check if wallet address already exists
     const existingWallet = await this.usersRepository.findByWallet(dto.walletAddress);
     if (existingWallet) {

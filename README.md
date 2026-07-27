@@ -311,7 +311,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
   <a href="https://github.com/Jopsan-gm">
     <img src="https://avatars.githubusercontent.com/u/228767027?v=4" width="100px;" style="border-radius:50%;" alt="Jopsan-gm"/><br />
     <sub><b>🥈 @Jopsan-gm</b></sub><br />
-    <sub>11 contributions</sub>
+    <sub>12 contributions</sub>
   </a>
 </td>
 

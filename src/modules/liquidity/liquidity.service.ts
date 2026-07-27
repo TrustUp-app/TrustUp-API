@@ -5,17 +5,17 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
-} from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
-import { SupabaseService } from '../../database/supabase.client';
-import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-contract.client';
-import { InvestmentSummaryResponseDto } from './dto/investment-summary-response.dto';
-import { LiquidityWithdrawRequestDto } from './dto/liquidity-withdraw-request.dto';
-import { LiquidityWithdrawResponseDto } from './dto/liquidity-withdraw-response.dto';
-import { LiquidityDepositRequestDto } from './dto/liquidity-deposit-request.dto';
-import { LiquidityDepositResponseDto } from './dto/liquidity-deposit-response.dto';
-import { PoolOverviewResponseDto } from './dto/pool-overview-response.dto';
+} from "@nestjs/common";
+import { CACHE_MANAGER } from "@nestjs/cache-manager";
+import { Cache } from "cache-manager";
+import { LiquidityRepository } from "../../database/repositories/liquidity.repository";
+import { LiquidityContractClient } from "../../blockchain/contracts/liquidity-contract.client";
+import { InvestmentSummaryResponseDto } from "./dto/investment-summary-response.dto";
+import { LiquidityWithdrawRequestDto } from "./dto/liquidity-withdraw-request.dto";
+import { LiquidityWithdrawResponseDto } from "./dto/liquidity-withdraw-response.dto";
+import { LiquidityDepositRequestDto } from "./dto/liquidity-deposit-request.dto";
+import { LiquidityDepositResponseDto } from "./dto/liquidity-deposit-response.dto";
+import { PoolOverviewResponseDto } from "./dto/pool-overview-response.dto";
 
 const SUMMARY_CACHE_TTL = 60;
 const STROOPS = 10_000_000n;
@@ -29,28 +29,37 @@ export class LiquidityService {
 
   constructor(
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-    private readonly supabaseService: SupabaseService,
+    private readonly liquidityRepository: LiquidityRepository,
     private readonly liquidityClient: LiquidityContractClient,
   ) {}
 
-  async getInvestmentSummary(wallet: string): Promise<InvestmentSummaryResponseDto> {
+  async getInvestmentSummary(
+    wallet: string,
+  ): Promise<InvestmentSummaryResponseDto> {
     const cacheKey = `liquidity:summary:${wallet}`;
 
-    const cached = await this.cacheManager.get<InvestmentSummaryResponseDto>(cacheKey);
+    const cached =
+      await this.cacheManager.get<InvestmentSummaryResponseDto>(cacheKey);
     if (cached) {
       this.logger.debug(`Cache HIT for ${wallet.slice(0, 8)}...`);
       return cached;
     }
 
-    this.logger.debug(`Cache MISS for ${wallet.slice(0, 8)}... - fetching from sources`);
+    this.logger.debug(
+      `Cache MISS for ${wallet.slice(0, 8)}... - fetching from sources`,
+    );
 
-    const [sharesInStroops, poolStats, totalInvested, { activeLoans, estimatedApy }] =
-      await Promise.all([
-        this.liquidityClient.getLpShares(wallet),
-        this.liquidityClient.getPoolStats(),
-        this.getTotalInvested(wallet),
-        this.getActiveLoansStats(),
-      ]);
+    const [
+      sharesInStroops,
+      poolStats,
+      totalInvested,
+      { activeLoans, estimatedApy },
+    ] = await Promise.all([
+      this.liquidityClient.getLpShares(wallet),
+      this.liquidityClient.getPoolStats(),
+      this.getTotalInvested(wallet),
+      this.getActiveLoansStats(),
+    ]);
 
     const currentValueInStroops =
       sharesInStroops > 0n
@@ -63,7 +72,9 @@ export class LiquidityService {
 
     const earnings = this.roundTo7(currentValue - totalInvested);
     const earningsPercent =
-      totalInvested > 0 ? Math.round((earnings / totalInvested) * 10000) / 100 : 0;
+      totalInvested > 0
+        ? Math.round((earnings / totalInvested) * 10000) / 100
+        : 0;
 
     const summary: InvestmentSummaryResponseDto = {
       totalInvested,
@@ -81,19 +92,24 @@ export class LiquidityService {
   }
 
   async getPoolOverview(): Promise<PoolOverviewResponseDto> {
-    const cacheKey = 'liquidity:overview';
+    const cacheKey = "liquidity:overview";
 
-    const cached = await this.cacheManager.get<PoolOverviewResponseDto>(cacheKey);
+    const cached =
+      await this.cacheManager.get<PoolOverviewResponseDto>(cacheKey);
     if (cached) {
-      this.logger.debug('Cache HIT for pool overview...');
+      this.logger.debug("Cache HIT for pool overview...");
       return cached;
     }
 
-    this.logger.debug('Cache MISS for pool overview... - fetching from sources');
+    this.logger.debug(
+      "Cache MISS for pool overview... - fetching from sources",
+    );
 
     const [poolStats, loansStats, totalInvestors] = await Promise.all([
       this.liquidityClient.getPoolStats().catch((err) => {
-        this.logger.warn(`Failed to fetch pool stats from contract: ${err.message}`);
+        this.logger.warn(
+          `Failed to fetch pool stats from contract: ${err.message}`,
+        );
         return { totalLiquidity: 0n };
       }),
       this.getActiveLoansStats(),
@@ -124,7 +140,7 @@ export class LiquidityService {
   ): Promise<LiquidityDepositResponseDto> {
     if (dto.amount < MIN_DEPOSIT_AMOUNT) {
       throw new BadRequestException({
-        code: 'VALIDATION_MINIMUM_DEPOSIT',
+        code: "VALIDATION_MINIMUM_DEPOSIT",
         message: `Minimum deposit amount is $${MIN_DEPOSIT_AMOUNT}.`,
       });
     }
@@ -136,7 +152,10 @@ export class LiquidityService {
       this.liquidityClient.calculateDeposit(amountInStroops),
     ]);
 
-    const unsignedXdr = await this.liquidityClient.buildDepositTx(wallet, amountInStroops);
+    const unsignedXdr = await this.liquidityClient.buildDepositTx(
+      wallet,
+      amountInStroops,
+    );
 
     const currentTotalLiquidity = this.fromStroops(poolStats.totalLiquidity);
     const currentSharePrice =
@@ -165,8 +184,8 @@ export class LiquidityService {
 
     if (requestedShares <= 0n) {
       throw new BadRequestException({
-        code: 'VALIDATION_INVALID_SHARES',
-        message: 'Withdrawal shares must be greater than zero.',
+        code: "VALIDATION_INVALID_SHARES",
+        message: "Withdrawal shares must be greater than zero.",
       });
     }
 
@@ -177,19 +196,21 @@ export class LiquidityService {
 
     if (ownedShares <= 0n || requestedShares > ownedShares) {
       throw new BadRequestException({
-        code: 'LIQUIDITY_INSUFFICIENT_SHARES',
-        message: 'You do not have enough pool shares to complete this withdrawal.',
+        code: "LIQUIDITY_INSUFFICIENT_SHARES",
+        message:
+          "You do not have enough pool shares to complete this withdrawal.",
       });
     }
 
-    const expectedAmount = await this.liquidityClient.calculateWithdrawal(requestedShares);
+    const expectedAmount =
+      await this.liquidityClient.calculateWithdrawal(requestedShares);
 
     if (expectedAmount > poolStats.availableLiquidity) {
       throw new HttpException(
         {
-          code: 'LIQUIDITY_INSUFFICIENT_AVAILABLE_LIQUIDITY',
+          code: "LIQUIDITY_INSUFFICIENT_AVAILABLE_LIQUIDITY",
           message:
-            'The pool does not currently have enough liquid funds to satisfy this withdrawal. Please try a smaller amount or wait for liquidity to free up.',
+            "The pool does not currently have enough liquid funds to satisfy this withdrawal. Please try a smaller amount or wait for liquidity to free up.",
         },
         HttpStatus.PAYMENT_REQUIRED,
       );
@@ -198,7 +219,10 @@ export class LiquidityService {
     const fee = (expectedAmount * poolStats.withdrawalFeeBps) / SHARE_PRICE_BPS;
     const netAmount = expectedAmount - fee;
     const remainingShares = ownedShares - requestedShares;
-    const unsignedXdr = await this.liquidityClient.buildWithdrawTx(wallet, requestedShares);
+    const unsignedXdr = await this.liquidityClient.buildWithdrawTx(
+      wallet,
+      requestedShares,
+    );
 
     return {
       unsignedXdr,
@@ -207,7 +231,9 @@ export class LiquidityService {
         shares: this.fromStroops(requestedShares),
         ownedShares: this.fromStroops(ownedShares),
         remainingShares: this.fromStroops(remainingShares),
-        currentSharePrice: this.roundTo7(Number(poolStats.sharePrice) / Number(SHARE_PRICE_BPS)),
+        currentSharePrice: this.roundTo7(
+          Number(poolStats.sharePrice) / Number(SHARE_PRICE_BPS),
+        ),
         expectedAmount: this.fromStroops(expectedAmount),
         feeBps: Number(poolStats.withdrawalFeeBps),
         fee: this.fromStroops(fee),
@@ -218,19 +244,7 @@ export class LiquidityService {
   }
 
   private async getTotalInvested(wallet: string): Promise<number> {
-    const client = this.supabaseService.getServiceRoleClient();
-
-    const { data, error } = await client
-      .from('liquidity_positions')
-      .select('deposited_amount')
-      .eq('provider_wallet', wallet)
-      .single();
-
-    if (error || !data) {
-      return 0;
-    }
-
-    return Number(data.deposited_amount);
+    return this.liquidityRepository.findTotalInvested(wallet);
   }
 
   private async getActiveLoansStats(): Promise<{
@@ -238,27 +252,23 @@ export class LiquidityService {
     estimatedApy: number;
     totalLoaned: number;
   }> {
-    const client = this.supabaseService.getServiceRoleClient();
-
-    const { data, error } = await client
-      .from('loans')
-      .select('loan_amount, interest_rate')
-      .eq('status', 'active');
-
-    if (error || !data || data.length === 0) {
-      if (error) {
-        this.logger.warn(`Failed to fetch active loans for APY: ${error.message}`);
-      }
+    const data = await this.liquidityRepository.findActiveLoans();
+    if (data.length === 0) {
       return { activeLoans: 0, estimatedApy: 0, totalLoaned: 0 };
     }
 
     const activeLoans = data.length;
-    const totalAmount = data.reduce((sum, loan) => sum + Number(loan.loan_amount), 0);
+    const totalAmount = data.reduce(
+      (sum, loan) => sum + Number(loan.loan_amount),
+      0,
+    );
     const weightedRate =
       totalAmount > 0
         ? data.reduce(
             (sum, loan) =>
-              sum + Number(loan.interest_rate) * (Number(loan.loan_amount) / totalAmount),
+              sum +
+              Number(loan.interest_rate) *
+                (Number(loan.loan_amount) / totalAmount),
             0,
           )
         : 0;
@@ -271,18 +281,7 @@ export class LiquidityService {
   }
 
   private async getTotalUniqueInvestors(): Promise<number> {
-    const client = this.supabaseService.getServiceRoleClient();
-
-    const { count, error } = await client
-      .from('liquidity_positions')
-      .select('*', { count: 'exact', head: true });
-
-    if (error) {
-      this.logger.warn(`Failed to fetch investors count: ${error.message}`);
-      return 0;
-    }
-
-    return count || 0;
+    return this.liquidityRepository.countInvestors();
   }
 
   private toStroops(value: number): bigint {
@@ -299,6 +298,8 @@ export class LiquidityService {
 
   private formatDisplayNumber(value: bigint): string {
     const normalized = this.fromStroops(value);
-    return Number.isInteger(normalized) ? String(normalized) : normalized.toString();
+    return Number.isInteger(normalized)
+      ? String(normalized)
+      : normalized.toString();
   }
 }

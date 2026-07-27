@@ -5,32 +5,16 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as StellarSdk from 'stellar-sdk';
-import { SupabaseService } from '../../../../src/database/supabase.client';
+import { TransactionsRepository } from '../../../../src/database/repositories/transactions.repository';
+import { StellarService } from '../../../../src/blockchain/stellar/stellar.service';
+import {
+  StellarNetworkError,
+  TransactionNotFoundError,
+} from '../../../../src/blockchain/stellar/stellar.errors';
 import { TransactionsService } from '../../../../src/modules/transactions/transactions.service';
 import { TransactionType } from '../../../../src/modules/transactions/dto/submit-transaction-request.dto';
-
-const mockTransactionCall = jest.fn();
-const mockIncludeFailed = jest.fn();
-const mockTransactionsBuilder = jest.fn();
-const mockSubmitTransaction = jest.fn();
-
-jest.mock('stellar-sdk', () => {
-  const actual = jest.requireActual('stellar-sdk');
-
-  return {
-    ...actual,
-    Horizon: {
-      ...actual.Horizon,
-      Server: jest.fn().mockImplementation(() => ({
-        submitTransaction: mockSubmitTransaction,
-        transactions: mockTransactionsBuilder,
-      })),
-    },
-  };
-});
 
 describe('TransactionsService', () => {
   let service: TransactionsService;
@@ -44,58 +28,35 @@ describe('TransactionsService', () => {
     set: jest.fn(),
   };
 
-  const mockSupabaseTable = {
-    select: jest.fn(),
-    insert: jest.fn(),
-    update: jest.fn(),
-    eq: jest.fn(),
-    maybeSingle: jest.fn(),
+  const mockStellarService = {
+    submitTransaction: jest.fn(),
+    getTransaction: jest.fn(),
+    getNetworkPassphrase: jest.fn().mockReturnValue(StellarSdk.Networks.TESTNET),
   };
 
-  const mockSupabaseClient = {
-    from: jest.fn().mockReturnValue(mockSupabaseTable),
-  };
-
-  const mockSupabaseService = {
-    getServiceRoleClient: jest.fn().mockReturnValue(mockSupabaseClient),
-  };
-
-  const mockConfigService = {
-    get: jest.fn((key: string) => {
-      if (key === 'STELLAR_HORIZON_URL') return 'https://horizon-testnet.stellar.org';
-      if (key === 'STELLAR_NETWORK_PASSPHRASE') return StellarSdk.Networks.TESTNET;
-      return undefined;
-    }),
+  const mockTransactionsRepository = {
+    create: jest.fn(),
+    findByHash: jest.fn(),
+    updateStatus: jest.fn(),
   };
 
   beforeEach(async () => {
     jest.useFakeTimers().setSystemTime(new Date(now));
-    mockTransactionsBuilder.mockReturnValue({
-      includeFailed: mockIncludeFailed,
-      transaction: mockTransactionCall,
-    });
-    mockIncludeFailed.mockReturnValue({
-      transaction: mockTransactionCall,
-    });
-    mockTransactionCall.mockReturnValue({
-      call: jest.fn(),
-    });
-    mockSupabaseTable.insert.mockResolvedValue({ error: null });
-    mockSupabaseTable.update.mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ error: null }),
-    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TransactionsService,
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
-        { provide: ConfigService, useValue: mockConfigService },
-        { provide: SupabaseService, useValue: mockSupabaseService },
+        { provide: StellarService, useValue: mockStellarService },
+        { provide: TransactionsRepository, useValue: mockTransactionsRepository },
       ],
     }).compile();
 
     service = module.get<TransactionsService>(TransactionsService);
     jest.clearAllMocks();
+    mockStellarService.getNetworkPassphrase.mockReturnValue(StellarSdk.Networks.TESTNET);
+    mockTransactionsRepository.create.mockResolvedValue(undefined);
+    mockTransactionsRepository.updateStatus.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -103,16 +64,31 @@ describe('TransactionsService', () => {
     jest.clearAllMocks();
   });
 
-  function mockDbLookup(record: Record<string, unknown> | null) {
-    mockSupabaseTable.select.mockReturnThis();
-    mockSupabaseTable.eq.mockReturnThis();
-    mockSupabaseTable.maybeSingle.mockResolvedValue({ data: record, error: null });
+  function buildValidXdr(): string {
+    const keypair = StellarSdk.Keypair.random();
+    const account = new StellarSdk.Account(keypair.publicKey(), '0');
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: '100',
+      networkPassphrase: StellarSdk.Networks.TESTNET,
+    })
+      .addOperation(
+        StellarSdk.Operation.payment({
+          destination: keypair.publicKey(),
+          asset: StellarSdk.Asset.native(),
+          amount: '1',
+        }),
+      )
+      .setTimeout(30)
+      .build();
+    tx.sign(keypair);
+    return tx.toXDR();
   }
 
-  function mockTxCallResult(result: unknown) {
-    const call = jest.fn().mockResolvedValue(result);
-    mockTransactionCall.mockReturnValue({ call });
-    return call;
+  function buildHorizonResultCodesError(transaction: string, operations: string[] = []): unknown {
+    return {
+      response: { data: { extras: { result_codes: { transaction, operations } } } },
+      message: 'Transaction submission failed',
+    };
   }
 
   it('should return finalized cached responses without calling Horizon', async () => {
@@ -138,20 +114,21 @@ describe('TransactionsService', () => {
     const result = await service.getTransactionStatus(validHash);
 
     expect(result.status).toBe('success');
-    expect(mockTransactionsBuilder).not.toHaveBeenCalled();
+    expect(mockStellarService.getTransaction).not.toHaveBeenCalled();
   });
 
   it('should return and cache a successful finalized transaction', async () => {
     mockCacheManager.get.mockResolvedValue(undefined);
-    mockDbLookup({
+    mockTransactionsRepository.findByHash.mockResolvedValue({
+      lookupColumn: 'hash',
       hash: validHash,
       type: 'loan_repay',
       status: 'pending',
-      submitted_at: '2026-03-23T05:15:00.000Z',
-      completed_at: null,
-      updated_at: '2026-03-23T05:15:10.000Z',
+      submittedAt: '2026-03-23T05:15:00.000Z',
+      completedAt: null,
+      updatedAt: '2026-03-23T05:15:10.000Z',
     });
-    mockTxCallResult({
+    mockStellarService.getTransaction.mockResolvedValue({
       hash: validHash,
       successful: true,
       ledger_attr: 123456,
@@ -187,19 +164,16 @@ describe('TransactionsService', () => {
 
   it('should return pending when Horizon cannot find a locally tracked transaction yet', async () => {
     mockCacheManager.get.mockResolvedValue(undefined);
-    mockDbLookup({
+    mockTransactionsRepository.findByHash.mockResolvedValue({
+      lookupColumn: 'hash',
       hash: validHash,
       type: 'deposit' as TransactionType,
       status: 'pending',
-      submitted_at: '2026-03-23T05:15:00.000Z',
-      completed_at: null,
-      updated_at: '2026-03-23T05:15:10.000Z',
+      submittedAt: '2026-03-23T05:15:00.000Z',
+      completedAt: null,
+      updatedAt: '2026-03-23T05:15:10.000Z',
     });
-    mockTxCallResult(
-      Promise.reject({
-        response: { status: 404 },
-      }),
-    );
+    mockStellarService.getTransaction.mockRejectedValue(new TransactionNotFoundError(validHash));
 
     const result = await service.getTransactionStatus(validHash);
 
@@ -217,25 +191,26 @@ describe('TransactionsService', () => {
 
   it('should return 404 when Horizon cannot find an unknown hash', async () => {
     mockCacheManager.get.mockResolvedValue(undefined);
-    mockDbLookup(null);
-    mockTxCallResult(
-      Promise.reject({
-        response: { status: 404 },
-      }),
-    );
+    mockTransactionsRepository.findByHash.mockResolvedValue(null);
+    mockStellarService.getTransaction.mockRejectedValue(new TransactionNotFoundError(validHash));
 
     await expect(service.getTransactionStatus(validHash)).rejects.toThrow(NotFoundException);
   });
 
   it('should return 503 when Horizon is temporarily unavailable', async () => {
     mockCacheManager.get.mockResolvedValue(undefined);
-    mockDbLookup({
+    mockTransactionsRepository.findByHash.mockResolvedValue({
+      lookupColumn: 'hash',
       hash: validHash,
       type: 'deposit' as TransactionType,
       status: 'pending',
-      submitted_at: '2026-03-23T05:15:00.000Z',
+      submittedAt: '2026-03-23T05:15:00.000Z',
+      completedAt: null,
+      updatedAt: null,
     });
-    mockTxCallResult(Promise.reject(new Error('network timeout')));
+    mockStellarService.getTransaction.mockRejectedValue(
+      new StellarNetworkError('Stellar network request failed'),
+    );
 
     await expect(service.getTransactionStatus(validHash)).rejects.toThrow(
       ServiceUnavailableException,
@@ -244,15 +219,16 @@ describe('TransactionsService', () => {
 
   it('should return failure details and cache finalized failed transactions', async () => {
     mockCacheManager.get.mockResolvedValue(undefined);
-    mockDbLookup({
+    mockTransactionsRepository.findByHash.mockResolvedValue({
+      lookupColumn: 'hash',
       hash: validHash,
       type: 'withdraw' as TransactionType,
       status: 'pending',
-      submitted_at: '2026-03-23T05:15:00.000Z',
-      completed_at: null,
-      updated_at: '2026-03-23T05:15:10.000Z',
+      submittedAt: '2026-03-23T05:15:00.000Z',
+      completedAt: null,
+      updatedAt: '2026-03-23T05:15:10.000Z',
     });
-    mockTxCallResult({
+    mockStellarService.getTransaction.mockResolvedValue({
       hash: validHash,
       successful: false,
       result_xdr: 'AAAA',
@@ -294,42 +270,13 @@ describe('TransactionsService', () => {
     );
   });
 
-  // ── Add this helper alongside the existing mockDbLookup / mockTxCallResult ──
-
-  function buildValidXdr(): string {
-    const keypair = StellarSdk.Keypair.random();
-    const account = new StellarSdk.Account(keypair.publicKey(), '0');
-    const tx = new StellarSdk.TransactionBuilder(account, {
-      fee: '100',
-      networkPassphrase: StellarSdk.Networks.TESTNET,
-    })
-      .addOperation(
-        StellarSdk.Operation.payment({
-          destination: keypair.publicKey(),
-          asset: StellarSdk.Asset.native(),
-          amount: '1',
-        }),
-      )
-      .setTimeout(30)
-      .build();
-    tx.sign(keypair);
-    return tx.toXDR();
-  }
-
-  function buildHorizonResultCodesError(transaction: string, operations: string[] = []): unknown {
-    return {
-      response: { data: { extras: { result_codes: { transaction, operations } } } },
-      message: 'Transaction submission failed',
-    };
-  }
-
   // ══════════════════════════════════════════════════════════════════════════
   // submitTransaction
   // ══════════════════════════════════════════════════════════════════════════
 
   describe('submitTransaction', () => {
     it('returns pending status and the transaction hash on a successful Horizon submission', async () => {
-      mockSubmitTransaction.mockResolvedValue({ hash: validHash });
+      mockStellarService.submitTransaction.mockResolvedValue({ hash: validHash });
 
       const result = await service.submitTransaction(validWallet, {
         xdr: buildValidXdr(),
@@ -337,7 +284,7 @@ describe('TransactionsService', () => {
       });
 
       expect(result).toEqual({ transactionHash: validHash, status: 'pending' });
-      expect(mockSubmitTransaction).toHaveBeenCalledTimes(1);
+      expect(mockStellarService.submitTransaction).toHaveBeenCalledTimes(1);
     });
 
     it('throws BadRequestException with TRANSACTION_INVALID_XDR when XDR is malformed', async () => {
@@ -350,9 +297,8 @@ describe('TransactionsService', () => {
       ).rejects.toMatchObject({ response: { code: 'TRANSACTION_INVALID_XDR' } });
     });
 
-
     it('throws BadRequestException mapped from a known tx-level result code (tx_bad_auth)', async () => {
-      mockSubmitTransaction.mockRejectedValue(
+      mockStellarService.submitTransaction.mockRejectedValue(
         buildHorizonResultCodesError('tx_bad_auth'),
       );
 
@@ -364,7 +310,7 @@ describe('TransactionsService', () => {
     });
 
     it('throws BadRequestException with STELLAR_TRANSACTION_FAILED for an unmapped result code', async () => {
-      mockSubmitTransaction.mockRejectedValue(
+      mockStellarService.submitTransaction.mockRejectedValue(
         buildHorizonResultCodesError('tx_some_unknown_code'),
       );
 
@@ -376,7 +322,7 @@ describe('TransactionsService', () => {
     });
 
     it('throws ServiceUnavailableException when Horizon submission times out', async () => {
-      mockSubmitTransaction.mockRejectedValue(new Error('network timeout'));
+      mockStellarService.submitTransaction.mockRejectedValue(new Error('network timeout'));
 
       await expect(
         service.submitTransaction(validWallet, { xdr: buildValidXdr(), type: 'deposit' as TransactionType }),
@@ -384,7 +330,7 @@ describe('TransactionsService', () => {
     });
 
     it('throws InternalServerErrorException for an unexpected Horizon submission error', async () => {
-      mockSubmitTransaction.mockRejectedValue(new Error('something unexpected'));
+      mockStellarService.submitTransaction.mockRejectedValue(new Error('something unexpected'));
 
       await expect(
         service.submitTransaction(validWallet, { xdr: buildValidXdr(), type: 'deposit' as TransactionType }),
@@ -399,8 +345,8 @@ describe('TransactionsService', () => {
   describe('getTransactionStatus – additional', () => {
     it('normalises an uppercase hash to lowercase before cache key and DB lookup', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
-      mockDbLookup(null);
-      mockTxCallResult(Promise.reject({ response: { status: 404 } }));
+      mockTransactionsRepository.findByHash.mockResolvedValue(null);
+      mockStellarService.getTransaction.mockRejectedValue(new TransactionNotFoundError(validHash));
 
       await expect(service.getTransactionStatus(validHash.toUpperCase())).rejects.toThrow(
         NotFoundException,
@@ -409,12 +355,13 @@ describe('TransactionsService', () => {
       expect(mockCacheManager.get).toHaveBeenCalledWith(
         `transactions:status:${validHash.toLowerCase()}`,
       );
+      expect(mockTransactionsRepository.findByHash).toHaveBeenCalledWith(validHash.toLowerCase());
     });
 
     it('returns type: null when a finalized transaction has no local DB record', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
-      mockDbLookup(null);
-      mockTxCallResult({
+      mockTransactionsRepository.findByHash.mockResolvedValue(null);
+      mockStellarService.getTransaction.mockResolvedValue({
         hash: validHash,
         successful: true,
         ledger_attr: 1,
@@ -433,32 +380,38 @@ describe('TransactionsService', () => {
       expect(result.type).toBeNull();
     });
 
-    it('throws ServiceUnavailableException when Horizon returns 502 during status lookup', async () => {
+    it('throws ServiceUnavailableException when Horizon lookup fails after retries', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
-      mockDbLookup({ hash: validHash, type: 'deposit' as TransactionType, status: 'pending', submitted_at: now });
-      mockTxCallResult(Promise.reject({ response: { status: 502 } }));
+      mockTransactionsRepository.findByHash.mockResolvedValue({
+        lookupColumn: 'hash',
+        hash: validHash,
+        type: 'deposit' as TransactionType,
+        status: 'pending',
+        submittedAt: now,
+        completedAt: null,
+        updatedAt: null,
+      });
+      mockStellarService.getTransaction.mockRejectedValue(
+        new StellarNetworkError('Stellar network request failed'),
+      );
 
       await expect(service.getTransactionStatus(validHash)).rejects.toThrow(
         ServiceUnavailableException,
       );
     });
 
-    it('throws ServiceUnavailableException when Horizon returns 503 during status lookup', async () => {
+    it('throws InternalServerErrorException for an unexpected status-lookup error', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
-      mockDbLookup({ hash: validHash, type: 'deposit' as TransactionType, status: 'pending', submitted_at: now });
-      mockTxCallResult(Promise.reject({ response: { status: 503 } }));
-
-      await expect(service.getTransactionStatus(validHash)).rejects.toThrow(
-        ServiceUnavailableException,
-      );
-    });
-
-    it('throws InternalServerErrorException for an unexpected Horizon status-lookup error', async () => {
-      mockCacheManager.get.mockResolvedValue(undefined);
-      mockDbLookup({ hash: validHash, type: 'deposit' as TransactionType, status: 'pending', submitted_at: now });
-      mockTxCallResult(
-        Promise.reject({ response: { status: 500 }, message: 'server error' }),
-      );
+      mockTransactionsRepository.findByHash.mockResolvedValue({
+        lookupColumn: 'hash',
+        hash: validHash,
+        type: 'deposit' as TransactionType,
+        status: 'pending',
+        submittedAt: now,
+        completedAt: null,
+        updatedAt: null,
+      });
+      mockStellarService.getTransaction.mockRejectedValue(new Error('unexpected failure'));
 
       await expect(service.getTransactionStatus(validHash)).rejects.toThrow(
         InternalServerErrorException,
@@ -467,8 +420,8 @@ describe('TransactionsService', () => {
 
     it('skips DB persistence when there is no local transaction record', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
-      mockDbLookup(null);
-      mockTxCallResult({
+      mockTransactionsRepository.findByHash.mockResolvedValue(null);
+      mockStellarService.getTransaction.mockResolvedValue({
         hash: validHash,
         successful: true,
         ledger_attr: 1,
@@ -483,37 +436,16 @@ describe('TransactionsService', () => {
 
       await service.getTransactionStatus(validHash);
 
-      expect(mockSupabaseTable.update).not.toHaveBeenCalled();
+      expect(mockTransactionsRepository.updateStatus).not.toHaveBeenCalled();
     });
 
-    it('falls back to transaction_hash column when hash column does not exist in DB', async () => {
+    it('propagates a DB lookup failure as TRANSACTION_LOOKUP_DB_FAILED', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
+      mockTransactionsRepository.findByHash.mockRejectedValue(new Error('db unreachable'));
 
-      mockSupabaseTable.select.mockReturnThis();
-      mockSupabaseTable.eq.mockReturnThis();
-      mockSupabaseTable.maybeSingle
-        .mockResolvedValueOnce({
-          data: null,
-          error: { message: 'column "hash" does not exist' },
-        })
-        .mockResolvedValueOnce({
-          data: {
-            transaction_hash: validHash,
-            type: 'deposit' as TransactionType,
-            status: 'pending',
-            submitted_at: now,
-            completed_at: null,
-            updated_at: now,
-          },
-          error: null,
-        });
-
-      mockTxCallResult(Promise.reject({ response: { status: 404 } }));
-
-      const result = await service.getTransactionStatus(validHash);
-
-      expect(result.status).toBe('pending');
-      expect(result.type).toBe('deposit');
+      await expect(service.getTransactionStatus(validHash)).rejects.toMatchObject({
+        response: { code: 'TRANSACTION_LOOKUP_DB_FAILED' },
+      });
     });
   });
 });

@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import fastifyHelmet from '@fastify/helmet';
+import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { setupSwagger } from './config/swagger';
+import { env } from './config/env';
 
 const BANNER = `
 ████████╗██████╗ ██╗   ██╗███████╗████████╗    ██╗   ██╗██████╗ 
@@ -29,6 +31,14 @@ async function bootstrap() {
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const corsOrigin = configService.get<string>('CORS_ORIGIN', '*');
+  const maxFileSizeMb = configService.get<number>('MAX_FILE_SIZE_MB', 5);
+
+  // Register fastify-multipart
+  await app.register(fastifyMultipart as any, {
+    limits: {
+      fileSize: maxFileSizeMb * 1024 * 1024,
+    },
+  });
 
   // Security HTTP headers
   await app.register(fastifyHelmet, {
@@ -79,3 +89,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+

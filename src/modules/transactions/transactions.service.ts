@@ -8,10 +8,17 @@ import {
   Logger,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { ConfigService } from '@nestjs/config';
 import { Cache } from 'cache-manager';
 import * as StellarSdk from 'stellar-sdk';
-import { SupabaseService } from '../../database/supabase.client';
+import {
+  TransactionRecord,
+  TransactionsRepository,
+} from '../../database/repositories/transactions.repository';
+import {
+  HorizonTransactionResponse,
+  StellarService,
+} from '../../blockchain/stellar/stellar.service';
+import { StellarNetworkError, TransactionNotFoundError } from '../../blockchain/stellar/stellar.errors';
 import { SubmitTransactionRequestDto, TransactionType } from './dto/submit-transaction-request.dto';
 import { SubmitTransactionResponseDto } from './dto/submit-transaction-response.dto';
 import {
@@ -34,55 +41,19 @@ const HORIZON_ERROR_MAP: Record<string, string> = {
   tx_no_account: 'Source account does not exist on the Stellar network.',
 };
 
-type TransactionLookupColumn = 'hash' | 'transaction_hash';
 type TransactionStatus = 'pending' | 'success' | 'failed';
-type HorizonTransactionRecord = {
-  hash: string;
-  successful: boolean;
-  ledger_attr: number;
-  operation_count: number;
-  source_account: string;
-  fee_charged: number | string;
-  memo_type: string;
-  memo?: string;
-  created_at: string;
-  result_xdr: string;
-};
-
-type TransactionRecord = {
-  lookupColumn: TransactionLookupColumn;
-  hash: string;
-  type: string | null;
-  status: TransactionStatus | null;
-  submittedAt: string | null;
-  completedAt: string | null;
-  updatedAt: string | null;
-};
 
 const FINALIZED_TRANSACTION_CACHE_TTL = 0;
 
 @Injectable()
 export class TransactionsService {
   private readonly logger = new Logger(TransactionsService.name);
-  private readonly horizonServer: StellarSdk.Horizon.Server;
-  private readonly networkPassphrase: string;
 
   constructor(
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-    private readonly configService: ConfigService,
-    private readonly supabaseService: SupabaseService,
-  ) {
-    const horizonUrl =
-      this.configService.get<string>('STELLAR_HORIZON_URL') ||
-      'https://horizon-testnet.stellar.org';
-
-    this.networkPassphrase =
-      this.configService.get<string>('STELLAR_NETWORK_PASSPHRASE') ||
-      StellarSdk.Networks.TESTNET;
-
-    this.horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
-    this.logger.log(`Horizon client initialized: ${horizonUrl}`);
-  }
+    private readonly stellarService: StellarService,
+    private readonly transactionsRepository: TransactionsRepository,
+  ) {}
 
   async submitTransaction(
     wallet: string,
@@ -92,7 +63,7 @@ export class TransactionsService {
 
     let transactionHash: string;
     try {
-      const horizonResult = await this.horizonServer.submitTransaction(transaction);
+      const horizonResult = await this.stellarService.submitTransaction(transaction);
       transactionHash = horizonResult.hash;
     } catch (error) {
       this.handleHorizonError(error);
@@ -123,11 +94,7 @@ export class TransactionsService {
     const transactionRecord = await this.findTransactionRecord(normalizedHash);
 
     try {
-      const horizonTransaction = await this.horizonServer
-        .transactions()
-        .includeFailed(true)
-        .transaction(normalizedHash)
-        .call();
+      const horizonTransaction = await this.stellarService.getTransaction(normalizedHash);
 
       const response = this.buildFinalizedTransactionResponse(horizonTransaction, transactionRecord);
 
@@ -136,7 +103,7 @@ export class TransactionsService {
 
       return response;
     } catch (error) {
-      if (this.isHorizonNotFoundError(error)) {
+      if (error instanceof TransactionNotFoundError) {
         if (transactionRecord) {
           return this.buildPendingTransactionResponse(normalizedHash, transactionRecord);
         }
@@ -153,7 +120,7 @@ export class TransactionsService {
 
   private parseXdr(xdr: string): StellarSdk.Transaction | StellarSdk.FeeBumpTransaction {
     try {
-      return StellarSdk.TransactionBuilder.fromXDR(xdr, this.networkPassphrase);
+      return StellarSdk.TransactionBuilder.fromXDR(xdr, this.stellarService.getNetworkPassphrase());
     } catch {
       throw new BadRequestException({
         code: 'TRANSACTION_INVALID_XDR',
@@ -211,100 +178,23 @@ export class TransactionsService {
     type: TransactionType,
     xdr: string,
   ): Promise<void> {
-    const client = this.supabaseService.getServiceRoleClient();
-    const submittedAt = new Date().toISOString();
-    const { error } = await client.from('transactions').insert({
-      user_wallet: wallet,
-      transaction_hash: hash,
+    await this.transactionsRepository.create({
+      userWallet: wallet,
+      hash,
       type,
-      status: 'pending',
       xdr,
-      submitted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     });
-
-    const payloads = [
-      {
-        hash,
-        user_wallet: wallet,
-        type,
-        status: 'pending',
-        submitted_at: submittedAt,
-      },
-      {
-        transaction_hash: hash,
-        user_wallet: wallet,
-        type,
-        status: 'pending',
-        submitted_at: submittedAt,
-      },
-    ];
-
-    let lastError: { message?: string } | null = null;
-
-    for (const payload of payloads) {
-      const { error } = await client.from('transactions').insert(payload);
-      if (!error) {
-        return;
-      }
-
-      lastError = error;
-      if (!this.isUnknownColumnError(error)) {
-        break;
-      }
-    }
-
-    if (lastError) {
-      throw new Error(lastError.message ?? 'Supabase insert failed');
-    }
   }
 
   private async findTransactionRecord(hash: string): Promise<TransactionRecord | null> {
-    const client = this.supabaseService.getServiceRoleClient();
-
-    for (const column of ['hash', 'transaction_hash'] as TransactionLookupColumn[]) {
-      const selectColumns = [
-        column,
-        'type',
-        'status',
-        'submitted_at',
-        'completed_at',
-        'updated_at',
-      ].join(', ');
-      const { data, error } = await client
-        .from('transactions')
-        .select(selectColumns)
-        .eq(column, hash)
-        .maybeSingle();
-
-      if (error) {
-        if (this.isUnknownColumnError(error)) {
-          continue;
-        }
-
-        throw new InternalServerErrorException({
-          code: 'TRANSACTION_LOOKUP_DB_FAILED',
-          message: 'Failed to read transaction metadata from the database.',
-        });
-      }
-
-      if (!data) {
-        continue;
-      }
-
-      const row = data as unknown as Record<string, unknown>;
-      return {
-        lookupColumn: column,
-        hash: String(row[column] ?? hash).toLowerCase(),
-        type: row.type ? String(row.type) : null,
-        status: row.status ? (String(row.status) as TransactionStatus) : null,
-        submittedAt: row.submitted_at ? String(row.submitted_at) : null,
-        completedAt: row.completed_at ? String(row.completed_at) : null,
-        updatedAt: row.updated_at ? String(row.updated_at) : null,
-      };
+    try {
+      return await this.transactionsRepository.findByHash(hash);
+    } catch {
+      throw new InternalServerErrorException({
+        code: 'TRANSACTION_LOOKUP_DB_FAILED',
+        message: 'Failed to read transaction metadata from the database.',
+      });
     }
-
-    return null;
   }
 
   private buildPendingTransactionResponse(
@@ -324,7 +214,7 @@ export class TransactionsService {
   }
 
   private buildFinalizedTransactionResponse(
-    transaction: HorizonTransactionRecord,
+    transaction: HorizonTransactionResponse,
     transactionRecord: TransactionRecord | null,
   ): TransactionStatusResponseDto {
     const status: TransactionStatus = transaction.successful ? 'success' : 'failed';
@@ -343,13 +233,13 @@ export class TransactionsService {
   }
 
   private extractSuccessDetails(
-    transaction: HorizonTransactionRecord,
+    transaction: HorizonTransactionResponse,
   ): TransactionResultDetailsDto {
     return {
       ledger: transaction.ledger_attr,
       operationCount: transaction.operation_count,
       sourceAccount: transaction.source_account,
-      feeCharged: String(transaction.fee_charged),
+      feeCharged: String(transaction.fee_charged ?? ''),
       memoType: transaction.memo_type,
       memo: transaction.memo ?? null,
       createdAt: transaction.created_at,
@@ -388,7 +278,6 @@ export class TransactionsService {
       return;
     }
 
-    const client = this.supabaseService.getServiceRoleClient();
     const payload = {
       status: response.status,
       result: response.result,
@@ -396,12 +285,14 @@ export class TransactionsService {
       completed_at: response.confirmedAt,
     };
 
-    const { error } = await client
-      .from('transactions')
-      .update(payload)
-      .eq(transactionRecord.lookupColumn, transactionRecord.hash);
-
-    if (error && !this.isUnknownColumnError(error)) {
+    try {
+      await this.transactionsRepository.updateStatus(
+        transactionRecord.hash,
+        response.status,
+        payload,
+        { lookupColumn: transactionRecord.lookupColumn },
+      );
+    } catch (error) {
       this.logger.warn(
         `Failed to persist finalized transaction ${transactionRecord.hash}: ${error.message}`,
       );
@@ -409,41 +300,19 @@ export class TransactionsService {
   }
 
   private handleHorizonLookupError(error: unknown, hash: string): never {
-    const err = error as {
-      response?: { status?: number };
-      message?: string;
-    };
-
-    const message = err?.message?.toLowerCase() ?? '';
-    if (
-      err?.response?.status === 502 ||
-      err?.response?.status === 503 ||
-      err?.response?.status === 504 ||
-      message.includes('timeout') ||
-      message.includes('network') ||
-      message.includes('socket')
-    ) {
+    if (error instanceof StellarNetworkError) {
       throw new ServiceUnavailableException({
         code: 'HORIZON_UNAVAILABLE',
         message: `Unable to query Horizon for transaction ${hash}. Please try again later.`,
       });
     }
 
-    this.logger.error(`Unexpected Horizon lookup error for ${hash}: ${err?.message ?? error}`);
+    const message = (error as { message?: string })?.message ?? String(error);
+    this.logger.error(`Unexpected Horizon lookup error for ${hash}: ${message}`);
     throw new InternalServerErrorException({
       code: 'TRANSACTION_STATUS_LOOKUP_FAILED',
       message: 'Failed to retrieve transaction status from Horizon.',
     });
-  }
-
-  private isHorizonNotFoundError(error: unknown): boolean {
-    const err = error as { response?: { status?: number } };
-    return err?.response?.status === 404;
-  }
-
-  private isUnknownColumnError(error: { message?: string } | null | undefined): boolean {
-    const message = error?.message?.toLowerCase() ?? '';
-    return message.includes('column') && message.includes('does not exist');
   }
 
   private toSnakeCase(value: string): string {
