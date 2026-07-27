@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { LoansModule } from './modules/loans/loans.module';
@@ -50,6 +52,14 @@ import { TransactionStatusCheckerModule } from './jobs/transaction-status-checke
   ],
   controllers: [],
   providers: [
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
