@@ -19,6 +19,9 @@ import { LoanPaymentReminderModule } from './jobs/loan-payment-reminder/loan-pay
 import { TransactionStatusCheckerModule } from './jobs/transaction-status-checker/transaction-status-checker.module';
 import { WebhookDeliveryModule } from './jobs/webhook-delivery/webhook-delivery.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { LoanDefaultDetectorModule } from './jobs/loan-default-detector/loan-default-detector.module';
+import { InterestAccrualModule } from './jobs/interest-accrual/interest-accrual.module';
+import { YieldDistributionModule } from './jobs/yield-distribution/yield-distribution.module';
 
 @Module({
   imports: [
@@ -53,6 +56,9 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     TransactionStatusCheckerModule,
     WebhookDeliveryModule,
     WebhooksModule,
+    LoanDefaultDetectorModule,
+    InterestAccrualModule,
+    YieldDistributionModule,
   ],
   controllers: [],
   providers: [

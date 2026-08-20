@@ -141,6 +141,61 @@ export class CreditLineContractClient {
     }
   }
 
+  /**
+   * Triggers the on-chain default path when the contract exposes `mark_default`.
+   * Off-chain status is still updated by the job even if this is skipped.
+   */
+  async markDefault(loanId: string): Promise<{ submitted: boolean; reason?: string }> {
+    if (!this.contractId) {
+      this.logger.warn(
+        { context: 'CreditLineContractClient', action: 'markDefault', loanId },
+        'CREDIT_LINE_CONTRACT_ID is not set — skipping on-chain default',
+      );
+      return { submitted: false, reason: 'not_configured' };
+    }
+    try {
+      const contract = new StellarSdk.Contract(this.contractId);
+      const server = this.sorobanService.getServer();
+      const networkPassphrase = this.sorobanService.getNetworkPassphrase();
+      const sourceKeypair = StellarSdk.Keypair.random();
+      const sourceAccount = new StellarSdk.Account(sourceKeypair.publicKey(), '0');
+      const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+        fee: StellarSdk.BASE_FEE,
+        networkPassphrase,
+      })
+        .addOperation(
+          contract.call('mark_default', StellarSdk.nativeToScVal(loanId, { type: 'string' })),
+        )
+        .setTimeout(30)
+        .build();
+      const simulation = await server.simulateTransaction(tx);
+      if (StellarSdk.SorobanRpc.Api.isSimulationError(simulation)) {
+        this.logger.warn(
+          {
+            context: 'CreditLineContractClient',
+            action: 'markDefault',
+            loanId,
+            error: (simulation as StellarSdk.SorobanRpc.Api.SimulateTransactionErrorResponse).error,
+          },
+          'mark_default simulation failed — off-chain default still recorded',
+        );
+        return { submitted: false, reason: 'simulation_failed' };
+      }
+      return { submitted: true };
+    } catch (error) {
+      this.logger.warn(
+        {
+          context: 'CreditLineContractClient',
+          action: 'markDefault',
+          loanId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'mark_default threw — off-chain default still recorded',
+      );
+      return { submitted: false, reason: 'error' };
+    }
+  }
+
   private toContractAmount(value: number): bigint {
     return BigInt(Math.round(value * 100));
   }
