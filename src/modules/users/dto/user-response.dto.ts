@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 /**
  * User preferences nested inside the profile response.
@@ -28,6 +29,9 @@ export class UserProfileDto {
 
     @ApiProperty({ example: 'https://example.com/avatar.png', nullable: true, description: 'Avatar URL (https only), null until set' })
     avatar: string | null;
+
+    @ApiProperty({ enum: UserRole, example: UserRole.BORROWER, description: 'User role for RBAC (admin, merchant, lp_provider, borrower)' })
+    role: UserRole;
 
     @ApiProperty({ type: UserPreferencesDto })
     preferences: UserPreferencesDto;

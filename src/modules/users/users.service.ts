@@ -42,6 +42,7 @@ export class UsersService {
             wallet: user.wallet_address,
             name: user.display_name,
             avatar: user.avatar_url,
+            role: user.role,
             preferences: this.mapPreferences(preferences),
             createdAt: user.created_at,
         };

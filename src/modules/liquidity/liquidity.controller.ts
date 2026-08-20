@@ -24,6 +24,9 @@ import { LiquidityWithdrawResponseDto } from './dto/liquidity-withdraw-response.
 import { LiquidityDepositRequestDto } from './dto/liquidity-deposit-request.dto';
 import { LiquidityDepositResponseDto } from './dto/liquidity-deposit-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
@@ -53,12 +56,13 @@ export class LiquidityController {
   }
 
   @Get('my-summary')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LP_PROVIDER, UserRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get personal investment summary',
     description:
-      'Returns a comprehensive summary of the authenticated user\'s liquidity pool investment, including share balance, current value, earnings, APY, pool size, and active loan count. Data is cached in Redis with a 1-minute TTL. Users with no investment receive a valid zero-value response.',
+      'Returns a comprehensive summary of the authenticated user\'s liquidity pool investment, including share balance, current value, earnings, APY, pool size, and active loan count. Data is cached in Redis with a 1-minute TTL. Users with no investment receive a valid zero-value response. Allowed roles: lp_provider, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -81,6 +85,7 @@ export class LiquidityController {
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden \u2014 insufficient role' })
   @ApiResponse({ status: 503, description: 'Liquidity contract temporarily unavailable' })
   async getMyInvestmentSummary(
     @CurrentUser() user: { wallet: string },
@@ -91,14 +96,15 @@ export class LiquidityController {
 
   @Post('deposit')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LP_PROVIDER, UserRole.ADMIN)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiOperation({
     summary: 'Construct a liquidity pool deposit transaction',
     description:
-      'Validates the deposit amount (minimum $10), queries the pool smart contract for current state, calculates the expected shares the user will receive, and returns an unsigned Soroban deposit() XDR for the client to sign.',
+      'Validates the deposit amount (minimum $10), queries the pool smart contract for current state, calculates the expected shares the user will receive, and returns an unsigned Soroban deposit() XDR for the client to sign. Allowed roles: lp_provider, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -107,6 +113,7 @@ export class LiquidityController {
   })
   @ApiResponse({ status: 400, description: 'Invalid amount or deposit below minimum ($10)' })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden \u2014 insufficient role' })
   @ApiResponse({ status: 503, description: 'Liquidity contract unavailable or network issue' })
   async depositLiquidity(
     @CurrentUser() user: { wallet: string },
@@ -123,14 +130,15 @@ export class LiquidityController {
 
   @Post('withdraw')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LP_PROVIDER, UserRole.ADMIN)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiOperation({
     summary: 'Construct a liquidity withdrawal transaction',
     description:
-      'Validates the authenticated user share balance, checks pool available liquidity, calculates the expected payout and fees, and returns an unsigned Soroban withdraw() XDR for the client to sign.',
+      'Validates the authenticated user share balance, checks pool available liquidity, calculates the expected payout and fees, and returns an unsigned Soroban withdraw() XDR for the client to sign. Allowed roles: lp_provider, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -140,6 +148,7 @@ export class LiquidityController {
   @ApiResponse({ status: 400, description: 'Invalid share amount or insufficient shares' })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
   @ApiResponse({ status: 402, description: 'Pool has insufficient available liquidity' })
+  @ApiResponse({ status: 403, description: 'Forbidden \u2014 insufficient role' })
   @ApiResponse({ status: 503, description: 'Liquidity contract unavailable or network issue' })
   async withdrawLiquidity(
     @CurrentUser() user: { wallet: string },

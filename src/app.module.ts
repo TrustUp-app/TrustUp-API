@@ -11,6 +11,7 @@ import { LoansModule } from './modules/loans/loans.module';
 import { ReputationModule } from './modules/reputation/reputation.module';
 import { UsersModule } from './modules/users/users.module';
 import { MerchantsModule } from './modules/merchants/merchants.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { LiquidityModule } from './modules/liquidity/liquidity.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
@@ -43,6 +44,7 @@ import { TransactionStatusCheckerModule } from './jobs/transaction-status-checke
     ReputationModule,
     UsersModule,
     MerchantsModule,
+    AdminModule,
     LiquidityModule,
     NotificationsModule,
     TransactionsModule,
