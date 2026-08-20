@@ -1,4 +1,5 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
+import { Injectable, InternalServerErrorException, Optional } from "@nestjs/common";
+import { WebhookDispatchService } from "../../jobs/webhook-delivery/webhook-dispatch.service";
 import { SupabaseService } from "../supabase.client";
 
 export interface LoanRecord {
@@ -50,7 +51,10 @@ export interface LoanBalanceRecord {
 
 @Injectable()
 export class LoansRepository {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    @Optional() private readonly webhookDispatch?: WebhookDispatchService,
+  ) {}
 
   async findById(
     id: string,
@@ -183,6 +187,7 @@ export class LoansRepository {
     status: string,
     onlyFromStatus?: string,
   ): Promise<void> {
+    const before = await this.findWebhookContext(loanId, userWallet);
     let query = this.supabaseService
       .getServiceRoleClient()
       .from("loans")
@@ -196,6 +201,7 @@ export class LoansRepository {
 
     const { error } = await query;
     this.throwOnError(error);
+    await this.dispatchStatusChange(before, status, userWallet);
   }
 
   async updateByLoanIdAndWallet(
@@ -203,6 +209,8 @@ export class LoansRepository {
     userWallet: string,
     values: Record<string, unknown>,
   ): Promise<void> {
+    const nextStatus = typeof values.status === "string" ? values.status : undefined;
+    const before = nextStatus ? await this.findWebhookContext(loanId, userWallet) : null;
     const { error } = await this.supabaseService
       .getServiceRoleClient()
       .from("loans")
@@ -211,6 +219,41 @@ export class LoansRepository {
       .eq("user_wallet", userWallet);
 
     this.throwOnError(error);
+    if (nextStatus) {
+      await this.dispatchStatusChange(before, nextStatus, userWallet);
+    }
+  }
+
+  private async findWebhookContext(
+    loanId: string,
+    userWallet: string,
+  ): Promise<{ loan_id: string; merchant_id: string | null; status: string } | null> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from("loans")
+      .select("loan_id, merchant_id, status")
+      .eq("loan_id", loanId)
+      .eq("user_wallet", userWallet)
+      .maybeSingle();
+    this.throwOnError(error);
+    return data as { loan_id: string; merchant_id: string | null; status: string } | null;
+  }
+
+  private async dispatchStatusChange(
+    before: { loan_id: string; merchant_id: string | null; status: string } | null,
+    nextStatus: string,
+    userWallet: string,
+  ): Promise<void> {
+    if (!this.webhookDispatch || !before || before.status === nextStatus) {
+      return;
+    }
+    await this.webhookDispatch.enqueueLoanStatusChange({
+      loanId: before.loan_id,
+      merchantId: before.merchant_id,
+      userWallet,
+      previousStatus: before.status,
+      status: nextStatus,
+    });
   }
 
   async recordPayment(payment: Record<string, unknown>): Promise<void> {

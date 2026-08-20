@@ -13,12 +13,14 @@ import { CreditLineContractClient } from '../../blockchain/contracts/credit-line
 import { ReputationContractClient } from '../../blockchain/contracts/reputation-contract.client';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { getRedisConfig } from '../../config/redis.config';
+import { WebhookDeliveryModule } from '../../jobs/webhook-delivery/webhook-delivery.module';
 
 @Module({
   imports: [
     ConfigModule,
     AuthModule,
     ReputationModule,
+    WebhookDeliveryModule,
     CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
