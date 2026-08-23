@@ -17,6 +17,15 @@ export function setupSwagger(app: INestApplication): void {
       },
       'JWT-auth',
     )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-admin-key',
+        in: 'header',
+        description: 'Admin API key for webhook inspection endpoints',
+      },
+      'admin-key',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

@@ -17,6 +17,8 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { BlockchainIndexerModule } from './jobs/blockchain-indexer/blockchain-indexer.module';
 import { LoanPaymentReminderModule } from './jobs/loan-payment-reminder/loan-payment-reminder.module';
 import { TransactionStatusCheckerModule } from './jobs/transaction-status-checker/transaction-status-checker.module';
+import { WebhookDeliveryModule } from './jobs/webhook-delivery/webhook-delivery.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { TransactionStatusCheckerModule } from './jobs/transaction-status-checke
     BlockchainIndexerModule,
     LoanPaymentReminderModule,
     TransactionStatusCheckerModule,
+    WebhookDeliveryModule,
+    WebhooksModule,
   ],
   controllers: [],
   providers: [
