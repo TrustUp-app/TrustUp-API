@@ -48,6 +48,24 @@ export interface LoanBalanceRecord {
   status: string;
 }
 
+export interface MerchantLoanStatsRecord {
+  merchant_id: string | null;
+  loan_amount: number | string;
+  remaining_balance: number | string;
+  status: string;
+  created_at: string;
+}
+
+export interface MerchantActiveLoanRecord {
+  id: string;
+  loan_id: string;
+  amount: number | string;
+  remaining_balance: number | string;
+  status: string;
+  next_payment_due: string | null;
+  created_at: string;
+}
+
 @Injectable()
 export class LoansRepository {
   constructor(private readonly supabaseService: SupabaseService) {}
@@ -220,6 +238,64 @@ export class LoansRepository {
       .insert(payment);
 
     this.throwOnError(error);
+  }
+
+  /**
+   * Returns every loan for a single merchant with only the columns
+   * needed for portfolio/analytics/score aggregation.
+   */
+  async findStatsByMerchant(
+    merchantId: string,
+  ): Promise<MerchantLoanStatsRecord[]> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from("loans")
+      .select("merchant_id, loan_amount, remaining_balance, status, created_at")
+      .eq("merchant_id", merchantId);
+
+    this.throwOnError(error);
+    return (data ?? []) as MerchantLoanStatsRecord[];
+  }
+
+  /**
+   * Returns every loan across all merchants with only the columns
+   * needed for leaderboard aggregation.
+   */
+  async findStatsForAllMerchants(): Promise<MerchantLoanStatsRecord[]> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from("loans")
+      .select("merchant_id, loan_amount, remaining_balance, status, created_at")
+      .not("merchant_id", "is", null);
+
+    this.throwOnError(error);
+    return (data ?? []) as MerchantLoanStatsRecord[];
+  }
+
+  /**
+   * Returns a paginated list of a merchant's active loans for the portfolio endpoint.
+   */
+  async findActiveByMerchant(
+    merchantId: string,
+    options: { limit: number; offset: number },
+  ): Promise<{ loans: MerchantActiveLoanRecord[]; total: number }> {
+    const { data, error, count } = await this.supabaseService
+      .getServiceRoleClient()
+      .from("loans")
+      .select(
+        "id, loan_id, amount, remaining_balance, status, next_payment_due, created_at",
+        { count: "exact" },
+      )
+      .eq("merchant_id", merchantId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .range(options.offset, options.offset + options.limit - 1);
+
+    this.throwOnError(error);
+    return {
+      loans: (data ?? []) as MerchantActiveLoanRecord[],
+      total: count ?? 0,
+    };
   }
 
   private throwOnError(error: { code?: string; message?: string } | null): void {

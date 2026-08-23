@@ -1,11 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MerchantsService } from '../../../../src/modules/merchants/merchants.service';
 import { MerchantsRepository } from '../../../../src/database/repositories/merchants.repository';
+import { LoansRepository } from '../../../../src/database/repositories/loans.repository';
+import { MerchantScoreService } from '../../../../src/modules/merchants/merchant-score.service';
+import { MerchantLeaderboardMetric } from '../../../../src/modules/merchants/dto/merchant-leaderboard-query.dto';
 import { NotFoundException } from '@nestjs/common';
 
 describe('MerchantsService', () => {
     let service: MerchantsService;
     let repository: jest.Mocked<MerchantsRepository>;
+    let loansRepository: jest.Mocked<LoansRepository>;
 
     const activeMerchants = [
         {
@@ -41,20 +45,30 @@ describe('MerchantsService', () => {
 
     const mockMerchantsRepository = {
         findAll: jest.fn(),
+        findAllActive: jest.fn(),
         findById: jest.fn(),
         findByWallet: jest.fn(),
+    };
+
+    const mockLoansRepository = {
+        findStatsByMerchant: jest.fn(),
+        findStatsForAllMerchants: jest.fn(),
+        findActiveByMerchant: jest.fn(),
     };
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 MerchantsService,
+                MerchantScoreService,
                 { provide: MerchantsRepository, useValue: mockMerchantsRepository },
+                { provide: LoansRepository, useValue: mockLoansRepository },
             ],
         }).compile();
 
         service = module.get<MerchantsService>(MerchantsService);
         repository = module.get(MerchantsRepository);
+        loansRepository = module.get(LoansRepository);
     });
 
     afterEach(() => {
@@ -204,6 +218,210 @@ describe('MerchantsService', () => {
             await expect(service.getMerchantById(wallet)).rejects.toThrow(
                 NotFoundException,
             );
+        });
+    });
+
+    describe('getMerchantPortfolio', () => {
+        it('should throw NotFoundException when the merchant does not exist', async () => {
+            mockMerchantsRepository.findById.mockResolvedValue(null);
+
+            await expect(service.getMerchantPortfolio('invalid-id', 20, 0)).rejects.toThrow(
+                NotFoundException,
+            );
+        });
+
+        it('should aggregate loan stats and return a paginated list of active loans', async () => {
+            mockMerchantsRepository.findById.mockResolvedValue(mockMerchantDetail);
+            mockLoansRepository.findStatsByMerchant.mockResolvedValue([
+                { loan_amount: 400, remaining_balance: 200, status: 'active', created_at: '2026-01-01T00:00:00Z' },
+                { loan_amount: 300, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+            ]);
+            mockLoansRepository.findActiveByMerchant.mockResolvedValue({
+                loans: [
+                    {
+                        id: 'loan-1',
+                        loan_id: 'chain-loan-1',
+                        amount: 400,
+                        remaining_balance: 200,
+                        status: 'active',
+                        next_payment_due: '2026-02-01T00:00:00Z',
+                        created_at: '2026-01-01T00:00:00Z',
+                    },
+                ],
+                total: 1,
+            });
+
+            const result = await service.getMerchantPortfolio('merchant-1', 20, 0);
+
+            expect(loansRepository.findStatsByMerchant).toHaveBeenCalledWith('merchant-1');
+            expect(loansRepository.findActiveByMerchant).toHaveBeenCalledWith('merchant-1', { limit: 20, offset: 0 });
+            expect(result.merchantId).toBe('merchant-1');
+            expect(result.totalLoans).toBe(2);
+            expect(result.activeLoansCount).toBe(1);
+            expect(result.completedLoansCount).toBe(1);
+            expect(result.totalVolume).toBe(700);
+            expect(result.outstandingBalance).toBe(200);
+            expect(result.repaymentRate).toBe(50);
+            expect(result.activeLoans).toEqual([
+                {
+                    id: 'loan-1',
+                    loanId: 'chain-loan-1',
+                    amount: 400,
+                    remainingBalance: 200,
+                    status: 'active',
+                    nextPaymentDue: '2026-02-01T00:00:00Z',
+                    createdAt: '2026-01-01T00:00:00Z',
+                },
+            ]);
+            expect(result.pagination).toEqual({ limit: 20, offset: 0, total: 1 });
+        });
+
+        it('should resolve the merchant by wallet when given a Stellar address', async () => {
+            const wallet = 'GMER1ABCDEFGHIJKLMNOPQRSTUVWXYZ234567890ABCDEFGHIJKLMNXX';
+            mockMerchantsRepository.findByWallet.mockResolvedValue(mockMerchantDetail);
+            mockLoansRepository.findStatsByMerchant.mockResolvedValue([]);
+            mockLoansRepository.findActiveByMerchant.mockResolvedValue({ loans: [], total: 0 });
+
+            await service.getMerchantPortfolio(wallet, 20, 0);
+
+            expect(repository.findByWallet).toHaveBeenCalledWith(wallet);
+            expect(repository.findById).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('getMerchantAnalytics', () => {
+        it('should throw NotFoundException when the merchant does not exist', async () => {
+            mockMerchantsRepository.findById.mockResolvedValue(null);
+
+            await expect(service.getMerchantAnalytics('invalid-id', 6)).rejects.toThrow(
+                NotFoundException,
+            );
+        });
+
+        it('should bucket loans into the requested number of trailing months', async () => {
+            mockMerchantsRepository.findById.mockResolvedValue(mockMerchantDetail);
+            mockLoansRepository.findStatsByMerchant.mockResolvedValue([]);
+
+            const result = await service.getMerchantAnalytics('merchant-1', 3);
+
+            expect(result.merchantId).toBe('merchant-1');
+            expect(result.months).toHaveLength(3);
+            expect(result.months[2].month).toBe(
+                `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+            );
+        });
+
+        it('should compute per-month volume, loanCount, defaultRate and avgLoanSize', async () => {
+            mockMerchantsRepository.findById.mockResolvedValue(mockMerchantDetail);
+
+            const now = new Date();
+            const thisMonthIso = new Date(now.getFullYear(), now.getMonth(), 15).toISOString();
+
+            mockLoansRepository.findStatsByMerchant.mockResolvedValue([
+                { loan_amount: 100, remaining_balance: 0, status: 'completed', created_at: thisMonthIso },
+                { loan_amount: 300, remaining_balance: 300, status: 'defaulted', created_at: thisMonthIso },
+            ]);
+
+            const result = await service.getMerchantAnalytics('merchant-1', 1);
+
+            expect(result.months).toHaveLength(1);
+            expect(result.months[0].volume).toBe(400);
+            expect(result.months[0].loanCount).toBe(2);
+            expect(result.months[0].defaultRate).toBe(50);
+            expect(result.months[0].avgLoanSize).toBe(200);
+            expect(result.summary).toEqual({
+                totalVolume: 400,
+                totalLoans: 2,
+                avgLoanSize: 200,
+                defaultRate: 50,
+            });
+        });
+
+        it('should return zeroed buckets when the merchant has no loans', async () => {
+            mockMerchantsRepository.findById.mockResolvedValue(mockMerchantDetail);
+            mockLoansRepository.findStatsByMerchant.mockResolvedValue([]);
+
+            const result = await service.getMerchantAnalytics('merchant-1', 2);
+
+            expect(result.months).toEqual(
+                result.months.map((m) => ({ ...m, volume: 0, loanCount: 0, defaultRate: 0, avgLoanSize: 0 })),
+            );
+            expect(result.summary).toEqual({ totalVolume: 0, totalLoans: 0, avgLoanSize: 0, defaultRate: 0 });
+        });
+    });
+
+    describe('getLeaderboard', () => {
+        it('should rank active merchants by totalVolume by default and assign 1-indexed ranks', async () => {
+            mockMerchantsRepository.findAllActive.mockResolvedValue([
+                { id: 'merchant-1', wallet: 'GMER1', name: 'TechStore', logo: 'logo1.png', category: 'Electronics', is_active: true },
+                { id: 'merchant-2', wallet: 'GMER2', name: 'FashionHub', logo: 'logo2.png', category: 'Clothing', is_active: true },
+            ]);
+            mockLoansRepository.findStatsForAllMerchants.mockResolvedValue([
+                { merchant_id: 'merchant-1', loan_amount: 100, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+                { merchant_id: 'merchant-2', loan_amount: 900, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+            ]);
+
+            const result = await service.getLeaderboard(MerchantLeaderboardMetric.VOLUME, 20, 0);
+
+            expect(result.metric).toBe(MerchantLeaderboardMetric.VOLUME);
+            expect(result.data.map((e) => e.merchantId)).toEqual(['merchant-2', 'merchant-1']);
+            expect(result.data[0].rank).toBe(1);
+            expect(result.data[1].rank).toBe(2);
+            expect(result.pagination).toEqual({ limit: 20, offset: 0, total: 2 });
+        });
+
+        it('should rank merchants by the requested metric', async () => {
+            mockMerchantsRepository.findAllActive.mockResolvedValue([
+                { id: 'merchant-1', wallet: 'GMER1', name: 'TechStore', logo: 'logo1.png', category: 'Electronics', is_active: true },
+                { id: 'merchant-2', wallet: 'GMER2', name: 'FashionHub', logo: 'logo2.png', category: 'Clothing', is_active: true },
+            ]);
+            mockLoansRepository.findStatsForAllMerchants.mockResolvedValue([
+                { merchant_id: 'merchant-1', loan_amount: 900, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+                { merchant_id: 'merchant-2', loan_amount: 100, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+                { merchant_id: 'merchant-2', loan_amount: 100, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+            ]);
+
+            const result = await service.getLeaderboard(MerchantLeaderboardMetric.TOTAL_LOANS, 20, 0);
+
+            expect(result.data.map((e) => e.merchantId)).toEqual(['merchant-2', 'merchant-1']);
+        });
+
+        it('should treat merchants without any loans as having zeroed stats instead of throwing', async () => {
+            mockMerchantsRepository.findAllActive.mockResolvedValue([
+                { id: 'merchant-1', wallet: 'GMER1', name: 'TechStore', logo: 'logo1.png', category: 'Electronics', is_active: true },
+            ]);
+            mockLoansRepository.findStatsForAllMerchants.mockResolvedValue([]);
+
+            const result = await service.getLeaderboard(MerchantLeaderboardMetric.VOLUME, 20, 0);
+
+            expect(result.data[0]).toMatchObject({
+                merchantId: 'merchant-1',
+                score: 0,
+                tier: 'poor',
+                totalVolume: 0,
+                repaymentRate: 0,
+                totalLoans: 0,
+            });
+        });
+
+        it('should apply pagination and offset ranks accordingly', async () => {
+            mockMerchantsRepository.findAllActive.mockResolvedValue([
+                { id: 'merchant-1', wallet: 'GMER1', name: 'A', logo: '', category: '', is_active: true },
+                { id: 'merchant-2', wallet: 'GMER2', name: 'B', logo: '', category: '', is_active: true },
+                { id: 'merchant-3', wallet: 'GMER3', name: 'C', logo: '', category: '', is_active: true },
+            ]);
+            mockLoansRepository.findStatsForAllMerchants.mockResolvedValue([
+                { merchant_id: 'merchant-1', loan_amount: 300, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+                { merchant_id: 'merchant-2', loan_amount: 200, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+                { merchant_id: 'merchant-3', loan_amount: 100, remaining_balance: 0, status: 'completed', created_at: '2026-01-01T00:00:00Z' },
+            ]);
+
+            const result = await service.getLeaderboard(MerchantLeaderboardMetric.VOLUME, 1, 1);
+
+            expect(result.data).toHaveLength(1);
+            expect(result.data[0].merchantId).toBe('merchant-2');
+            expect(result.data[0].rank).toBe(2);
+            expect(result.pagination).toEqual({ limit: 1, offset: 1, total: 3 });
         });
     });
 });

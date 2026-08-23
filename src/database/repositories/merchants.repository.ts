@@ -61,6 +61,26 @@ export class MerchantsRepository {
     }
 
     /**
+     * Returns every active merchant, unpaginated, for leaderboard ranking.
+     */
+    async findAllActive(): Promise<MerchantRecord[]> {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('merchants')
+            .select('id, wallet, name, logo, category, is_active')
+            .eq('is_active', true);
+
+        if (error) {
+            throw new InternalServerErrorException({
+                code: 'DATABASE_QUERY_ERROR',
+                message: error.message,
+            });
+        }
+
+        return (data as MerchantRecord[]) ?? [];
+    }
+
+    /**
      * Finds a merchant by its unique ID.
      */
     async findById(id: string): Promise<MerchantDetailRecord | null> {
