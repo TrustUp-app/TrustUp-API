@@ -52,4 +52,45 @@ describe('LoanDefaultDetectorProcessor', () => {
     await module.get(LoanDefaultDetectorProcessor).process(createMockJob());
     expect(creditLine.markDefault).not.toHaveBeenCalled();
   });
+
+  it('keeps marking remaining loans when markDefault throws', async () => {
+    const runsChain = createSupabaseChainMock();
+    runsChain.insert.mockResolvedValue({ error: null });
+    const loansChain = createSupabaseChainMock();
+    loansChain.lt.mockResolvedValue({
+      data: [
+        { id: '1', loan_id: 'L1', user_wallet: 'G1', status: 'active', next_payment_due: '2026-01-01' },
+        { id: '2', loan_id: 'L2', user_wallet: 'G2', status: 'active', next_payment_due: '2026-01-01' },
+      ],
+      error: null,
+    });
+    loansChain.update.mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ error: null }),
+      }),
+    });
+    const client = {
+      from: jest.fn((table: string) => (table === 'loan_job_runs' ? runsChain : loansChain)),
+    };
+    const creditLine = {
+      markDefault: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('simulation blew up'))
+        .mockResolvedValueOnce({ submitted: true }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        LoanDefaultDetectorProcessor,
+        { provide: SupabaseService, useValue: { getServiceRoleClient: () => client } },
+        { provide: CreditLineContractClient, useValue: creditLine },
+      ],
+    }).compile();
+
+    await expect(
+      module.get(LoanDefaultDetectorProcessor).process(createMockJob()),
+    ).resolves.toBeUndefined();
+    expect(creditLine.markDefault).toHaveBeenCalledWith('L1');
+    expect(creditLine.markDefault).toHaveBeenCalledWith('L2');
+  });
 });

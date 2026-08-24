@@ -70,7 +70,19 @@ export class LoanDefaultDetectorProcessor extends WorkerHost {
         continue;
       }
 
-      await this.creditLine.markDefault(loan.loan_id);
+      try {
+        await this.creditLine.markDefault(loan.loan_id);
+      } catch (error) {
+        this.logger.error(
+          {
+            context: 'LoanDefaultDetectorProcessor',
+            action: 'markDefaultOnChain',
+            loanId: loan.loan_id,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'On-chain mark_default failed - off-chain default already recorded',
+        );
+      }
       marked += 1;
     }
 
