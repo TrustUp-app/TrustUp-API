@@ -303,7 +303,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
   <a href="https://github.com/BrayanMQ">
     <img src="https://avatars.githubusercontent.com/u/49928451?v=4" width="100px;" style="border-radius:50%;" alt="BrayanMQ"/><br />
     <sub><b>🥇 @BrayanMQ</b></sub><br />
-    <sub>56 contributions</sub>
+    <sub>57 contributions</sub>
   </a>
 </td>
 
@@ -311,7 +311,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
   <a href="https://github.com/actions-user">
     <img src="https://avatars.githubusercontent.com/u/65916846?v=4" width="100px;" style="border-radius:50%;" alt="actions-user"/><br />
     <sub><b>🥈 @actions-user</b></sub><br />
-    <sub>35 contributions</sub>
+    <sub>36 contributions</sub>
   </a>
 </td>
 
