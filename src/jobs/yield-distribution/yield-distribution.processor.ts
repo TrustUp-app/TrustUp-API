@@ -13,6 +13,15 @@ export function shareOfPool(shares: number, totalShares: number, poolYield: numb
   return Math.round(((shares / totalShares) * poolYield) * 1e7) / 1e7;
 }
 
+/** Interest not yet credited to LPs. Checkpoint is loans.distributed_interest. */
+export function undistributedInterest(accrued: number, distributed: number): number {
+  const delta = Number(accrued) - Number(distributed);
+  if (!Number.isFinite(delta) || delta <= 0) {
+    return 0;
+  }
+  return Math.round(delta * 1e7) / 1e7;
+}
+
 @Processor('yield-distribution')
 export class YieldDistributionProcessor extends WorkerHost {
   private readonly logger = new Logger(YieldDistributionProcessor.name);
@@ -43,16 +52,18 @@ export class YieldDistributionProcessor extends WorkerHost {
 
     const { data: loans, error: loanError } = await db
       .from('loans')
-      .select('accrued_interest')
+      .select('id, accrued_interest, distributed_interest')
       .in('status', ['active', 'completed', 'defaulted']);
     if (loanError) {
       throw new Error(`Failed to load loan interest: ${loanError.message}`);
     }
 
-    const poolInterest = (loans ?? []).reduce(
-      (sum, row) => sum + Number(row.accrued_interest ?? 0),
-      0,
-    );
+    const pending = (loans ?? []).map((row) => {
+      const distributed = Number(row.distributed_interest ?? 0);
+      const delta = undistributedInterest(Number(row.accrued_interest ?? 0), distributed);
+      return { id: row.id as string, distributed, delta };
+    });
+    const poolInterest = pending.reduce((sum, row) => sum + row.delta, 0);
     const distributable = Math.round(poolInterest * LP_YIELD_RATIO * 1e7) / 1e7;
 
     const { data: positions, error: posError } = await db
@@ -92,6 +103,32 @@ export class YieldDistributionProcessor extends WorkerHost {
         continue;
       }
       paid += 1;
+    }
+
+    if (paid > 0 && totalShares > 0 && distributable > 0) {
+      for (const loan of pending) {
+        if (loan.delta <= 0) {
+          continue;
+        }
+        const { error: checkpointError } = await db
+          .from('loans')
+          .update({
+            distributed_interest: loan.distributed + loan.delta,
+            updated_at: now,
+          })
+          .eq('id', loan.id);
+        if (checkpointError) {
+          this.logger.error(
+            {
+              context: 'YieldDistributionProcessor',
+              action: 'checkpointDistributed',
+              loanId: loan.id,
+              error: checkpointError.message,
+            },
+            'Failed to checkpoint distributed interest',
+          );
+        }
+      }
     }
 
     await db
