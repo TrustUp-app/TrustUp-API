@@ -31,23 +31,27 @@ import { AvailableCreditResponseDto } from './dto/available-credit-response.dto'
 import { LoanListQueryDto, LoanListStatusFilter } from './dto/loan-list-query.dto';
 import { LoanListResponseDto } from './dto/loan-list-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 
 @ApiTags('loans')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.BORROWER, UserRole.ADMIN)
 @Controller('loans')
 export class LoansController {
   constructor(private readonly loansService: LoansService) {}
 
   @Post('quote')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Calculate loan quote',
     description:
-      'Calculates loan terms (interest rate, repayment schedule, total cost) based on user reputation without creating an actual loan on-chain. Requires JWT authentication.',
+      'Calculates loan terms (interest rate, repayment schedule, total cost) based on user reputation without creating an actual loan on-chain. Requires JWT authentication. Allowed roles: borrower, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -56,6 +60,7 @@ export class LoansController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input or amount exceeds credit limit' })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   @ApiResponse({ status: 404, description: 'Merchant not found' })
   async getLoanQuote(
     @CurrentUser() user: { wallet: string },
@@ -66,12 +71,10 @@ export class LoansController {
   }
 
   @Get('my-loans')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({
     summary: 'List loans for the authenticated user',
     description:
-      'Returns paginated loans for the authenticated user ordered by creation date (newest first). Supports filtering by active, completed, or defaulted status and includes merchant information plus payment summary fields.',
+      'Returns paginated loans for the authenticated user ordered by creation date (newest first). Supports filtering by active, completed, or defaulted status and includes merchant information plus payment summary fields. Allowed roles: borrower, admin.',
   })
   @ApiQuery({
     name: 'status',
@@ -98,6 +101,7 @@ export class LoansController {
   })
   @ApiResponse({ status: 400, description: 'Invalid status or pagination parameters' })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   async getMyLoans(
     @CurrentUser() user: { wallet: string },
     @Query() query: LoanListQueryDto,
@@ -107,12 +111,10 @@ export class LoansController {
   }
 
   @Get('available-credit')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get available credit for the authenticated user',
     description:
-      'Reads the current reputation score from the reputation contract, sums outstanding balances from active loans, and returns the user borrowing capacity breakdown.',
+      'Reads the current reputation score from the reputation contract, sums outstanding balances from active loans, and returns the user borrowing capacity breakdown. Allowed roles: borrower, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -120,6 +122,7 @@ export class LoansController {
     type: AvailableCreditResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   @ApiResponse({ status: 503, description: 'Reputation contract temporarily unavailable' })
   async getAvailableCredit(@CurrentUser() user: { wallet: string }) {
     const data = await this.loansService.getAvailableCredit(user.wallet);
@@ -128,14 +131,12 @@ export class LoansController {
 
   @Post('create')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiBearerAuth()
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiOperation({
     summary: 'Create BNPL loan',
     description:
-      'Creates a pending BNPL loan record and returns an unsigned Soroban XDR transaction for the authenticated user to sign.',
+      'Creates a pending BNPL loan record and returns an unsigned Soroban XDR transaction for the authenticated user to sign. Allowed roles: borrower, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -147,6 +148,7 @@ export class LoansController {
     description: 'Invalid input, insufficient reputation, or amount exceeds credit limit',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   @ApiResponse({ status: 404, description: 'Merchant not found' })
   @ApiResponse({ status: 500, description: 'Failed to construct XDR or persist pending loan' })
   async createLoan(
@@ -160,9 +162,7 @@ export class LoansController {
 
   @Post(':loanId/pay')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiBearerAuth()
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
   @ApiParam({
     name: 'loanId',
@@ -172,7 +172,7 @@ export class LoansController {
   @ApiOperation({
     summary: 'Make a loan repayment',
     description:
-      'Validates the payment, constructs an unsigned Soroban repay_loan() transaction, and returns it alongside a payment preview. The mobile app must sign the XDR and submit the signed transaction back to the network. Requires JWT authentication.',
+      'Validates the payment, constructs an unsigned Soroban repay_loan() transaction, and returns it alongside a payment preview. The mobile app must sign the XDR and submit the signed transaction back to the network. Requires JWT authentication. Allowed roles: borrower, admin.',
   })
   @ApiResponse({
     status: 200,
@@ -181,6 +181,7 @@ export class LoansController {
   })
   @ApiResponse({ status: 400, description: 'Invalid payment amount or loan not active' })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   @ApiResponse({
     status: 404,
     description: 'Loan not found or does not belong to authenticated user',

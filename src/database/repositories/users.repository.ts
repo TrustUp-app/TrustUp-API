@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { SupabaseService } from '../supabase.client';
 import { UpdateUserDto } from '../../modules/users/dto/update-user.dto';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 export interface UserPreferencesRecord {
     notifications_enabled: boolean;
@@ -15,6 +16,7 @@ export interface UserRecord {
     display_name: string | null;
     avatar_url: string | null;
     status: 'active' | 'blocked';
+    role: UserRole;
     created_at: string;
     /** Nested from user_preferences table — null if row does not exist yet */
     user_preferences: UserPreferencesRecord | null;
@@ -42,7 +44,7 @@ export class UsersRepository {
             .getServiceRoleClient()
             .from('users')
             .select(
-                'id, wallet_address, username, display_name, avatar_url, status, created_at, user_preferences(notifications_enabled, language, theme)',
+                'id, wallet_address, username, display_name, avatar_url, status, role, created_at, user_preferences(notifications_enabled, language, theme)',
             )
             .eq('wallet_address', wallet)
             .maybeSingle();
@@ -75,7 +77,7 @@ export class UsersRepository {
             .getServiceRoleClient()
             .from('users')
             .insert({ wallet_address: wallet })
-            .select('id, wallet_address, username, display_name, avatar_url, status, created_at')
+            .select('id, wallet_address, username, display_name, avatar_url, status, role, created_at')
             .single();
 
         if (error) {
@@ -85,7 +87,7 @@ export class UsersRepository {
             });
         }
 
-        return { ...(data as Omit<UserRecord, 'user_preferences'>), user_preferences: null };
+        return { ...(data as Omit<UserRecord, 'user_preferences'>), user_preferences: null } as UserRecord;
     }
 
     /**
@@ -193,7 +195,7 @@ export class UsersRepository {
                 avatar_url: data.avatarUrl,
                 status: 'active',
             })
-            .select('id, wallet_address, username, display_name, avatar_url, status, created_at')
+            .select('id, wallet_address, username, display_name, avatar_url, status, role, created_at')
             .single();
 
         if (error) {
@@ -203,7 +205,7 @@ export class UsersRepository {
             });
         }
 
-        return { ...(user as Omit<UserRecord, 'user_preferences'>), user_preferences: null };
+        return { ...(user as Omit<UserRecord, 'user_preferences'>), user_preferences: null } as UserRecord;
     }
 
     async uploadAvatar(
@@ -232,5 +234,67 @@ export class UsersRepository {
 
         const { data } = client.storage.from('avatars').getPublicUrl(fileName);
         return data.publicUrl;
+    }
+
+    /**
+     * Updates the role of a user identified by their ID.
+     * Used by admin endpoints for role management.
+     *
+     * @param userId - The user's UUID
+     * @param role - The new role to assign
+     * @returns Updated user record
+     */
+    async updateRole(
+        userId: string,
+        role: UserRole,
+    ): Promise<{ id: string; wallet_address: string; role: UserRole }> {
+        const { data, error } = await this.supabaseService
+            .getServiceRoleClient()
+            .from('users')
+            .update({ role })
+            .eq('id', userId)
+            .select('id, wallet_address, role')
+            .single();
+
+        if (error || !data) {
+            throw new InternalServerErrorException({
+                code: 'DATABASE_ROLE_UPDATE_FAILED',
+                message: 'Failed to update user role.',
+            });
+        }
+
+        return data as { id: string; wallet_address: string; role: UserRole };
+    }
+
+    /**
+     * Finds a user by their internal UUID.
+     * Used by admin endpoints.
+     */
+    async findById(userId: string): Promise<UserRecord | null> {
+        const { data, error } = await this.supabaseService
+            .getServiceRoleClient()
+            .from('users')
+            .select(
+                'id, wallet_address, username, display_name, avatar_url, status, role, created_at, user_preferences(notifications_enabled, language, theme)',
+            )
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (error) {
+            throw new InternalServerErrorException({
+                code: 'DATABASE_QUERY_ERROR',
+                message: error.message,
+            });
+        }
+        if (!data) return null;
+
+        const raw = data as unknown as Omit<UserRecord, 'user_preferences'> & {
+            user_preferences: UserPreferencesRecord[];
+        };
+
+        return {
+            ...raw,
+            user_preferences: raw.user_preferences?.[0] ?? null,
+        };
     }
 }

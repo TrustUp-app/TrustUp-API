@@ -2,6 +2,8 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { UsersRepository } from '../../database/repositories/users.repository';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 interface JwtPayload {
   wallet: string;
@@ -18,10 +20,16 @@ interface JwtPayload {
  *
  * Only tokens with type === 'access' are accepted to prevent refresh tokens
  * from being used to authenticate API requests.
+ *
+ * The user's role is resolved from the database and included in req.user
+ * so that RolesGuard can enforce RBAC without a second DB query.
  */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(configService: ConfigService) {
+  constructor(
+    configService: ConfigService,
+    private readonly usersRepository: UsersRepository,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -33,10 +41,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * Called by Passport after the token signature is verified.
    * The returned value is injected into req.user.
    *
+   * Resolves the user's role from the database so that RolesGuard
+   * can enforce RBAC without an additional query per request.
+   *
    * @param payload - Decoded JWT payload
-   * @returns User object containing the wallet address
+   * @returns User object containing the wallet address and role
    */
-  validate(payload: JwtPayload): { wallet: string } {
+  async validate(payload: JwtPayload): Promise<{ wallet: string; role: UserRole }> {
     if (payload.type !== 'access') {
       throw new UnauthorizedException({
         code: 'AUTH_TOKEN_INVALID',
@@ -44,6 +55,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       });
     }
 
-    return { wallet: payload.wallet };
+    const user = await this.usersRepository.findByWallet(payload.wallet);
+
+    // Default to 'borrower' if no user found (edge case: token exists but user was deleted)
+    const role = (user?.role as UserRole) ?? UserRole.BORROWER;
+
+    return { wallet: payload.wallet, role };
   }
 }
