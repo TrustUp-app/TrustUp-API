@@ -40,9 +40,7 @@ export class EventParserService {
    * Attempts to parse a raw Soroban event into a typed ParsedContractEvent.
    * Returns null if the event type is unrecognised.
    */
-  parseEvent(
-    rawEvent: StellarSdk.SorobanRpc.Api.EventResponse,
-  ): ParsedContractEvent | null {
+  parseEvent(rawEvent: StellarSdk.SorobanRpc.Api.EventResponse): ParsedContractEvent | null {
     try {
       const eventName = this.scValToString(rawEvent.topic[0]);
       const eventId = rawEvent.id;
@@ -90,9 +88,7 @@ export class EventParserService {
           };
 
         default:
-          this.logger.debug(
-            `Ignoring unrecognised event type: ${eventName}`,
-          );
+          this.logger.debug(`Ignoring unrecognised event type: ${eventName}`);
           return null;
       }
     } catch (error) {
@@ -119,9 +115,7 @@ export class EventParserService {
    *   topic[1] = Address (user_wallet)
    *   value    = Map { loan_id: String, principal: i128, interest: i128, due_date?: u64 }
    */
-  private parseLoanCreated(
-    raw: StellarSdk.SorobanRpc.Api.EventResponse,
-  ): LoanCreatedPayload {
+  private parseLoanCreated(raw: StellarSdk.SorobanRpc.Api.EventResponse): LoanCreatedPayload {
     const userWallet = this.scValToString(raw.topic[1]);
     const valueMap = this.scValToNativeMap(raw.value);
 
@@ -130,9 +124,7 @@ export class EventParserService {
       userWallet,
       principalAmount: this.stroopsToDecimal(valueMap.principal ?? 0),
       interestAmount: this.stroopsToDecimal(valueMap.interest ?? 0),
-      dueDate: valueMap.due_date
-        ? new Date(Number(valueMap.due_date) * 1000).toISOString()
-        : null,
+      dueDate: valueMap.due_date ? new Date(Number(valueMap.due_date) * 1000).toISOString() : null,
     };
   }
 
@@ -142,9 +134,7 @@ export class EventParserService {
    *   topic[1] = String (loan_id)
    *   value    = Map { amount: i128, paid_at: u64 }
    */
-  private parseLoanRepaid(
-    raw: StellarSdk.SorobanRpc.Api.EventResponse,
-  ): LoanRepaidPayload {
+  private parseLoanRepaid(raw: StellarSdk.SorobanRpc.Api.EventResponse): LoanRepaidPayload {
     const loanId = this.scValToString(raw.topic[1]);
     const valueMap = this.scValToNativeMap(raw.value);
 
@@ -163,9 +153,7 @@ export class EventParserService {
    *   topic[0] = Symbol("LOAN_DEFAULTED")
    *   topic[1] = String (loan_id)
    */
-  private parseLoanDefaulted(
-    raw: StellarSdk.SorobanRpc.Api.EventResponse,
-  ): LoanDefaultedPayload {
+  private parseLoanDefaulted(raw: StellarSdk.SorobanRpc.Api.EventResponse): LoanDefaultedPayload {
     return {
       loanId: this.scValToString(raw.topic[1]),
     };
@@ -177,9 +165,7 @@ export class EventParserService {
    *   topic[1] = Address (wallet)
    *   value    = Map { old_score: u32, new_score: u32, reason: String }
    */
-  private parseScoreChanged(
-    raw: StellarSdk.SorobanRpc.Api.EventResponse,
-  ): ScoreChangedPayload {
+  private parseScoreChanged(raw: StellarSdk.SorobanRpc.Api.EventResponse): ScoreChangedPayload {
     const wallet = this.scValToString(raw.topic[1]);
     const valueMap = this.scValToNativeMap(raw.value);
 

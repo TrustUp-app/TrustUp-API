@@ -60,7 +60,11 @@ export class InterestAccrualProcessor extends WorkerHost {
     for (const loan of loans ?? []) {
       const start = loan.last_accrual_at || loan.created_at;
       const days = daysBetweenUtc(start, now);
-      const delta = accrueInterest(Number(loan.remaining_balance), Number(loan.interest_rate), days);
+      const delta = accrueInterest(
+        Number(loan.remaining_balance),
+        Number(loan.interest_rate),
+        days,
+      );
       if (delta <= 0) {
         continue;
       }

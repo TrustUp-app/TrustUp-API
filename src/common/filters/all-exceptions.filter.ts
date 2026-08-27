@@ -18,9 +18,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<FastifyRequest>();
 
     const isHttpException = exception instanceof HttpException;
-    const status = isHttpException
-      ? exception.getStatus()
-      : HttpStatus.INTERNAL_SERVER_ERROR;
+    const status = isHttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const path = request.raw?.url || request.url || '';
 
@@ -36,13 +34,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
-    const message = isHttpException
-      ? exception.message
-      : 'Internal server error';
+    const message = isHttpException ? exception.message : 'Internal server error';
 
-    const error = isHttpException
-      ? exception.name
-      : 'Internal Server Error';
+    const error = isHttpException ? exception.name : 'Internal Server Error';
 
     response.status(status).send({
       statusCode: status,

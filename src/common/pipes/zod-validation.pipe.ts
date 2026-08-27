@@ -14,9 +14,7 @@ export class ZodValidationPipe implements PipeTransform {
       return parsedValue;
     } catch (error: unknown) {
       if (error instanceof ZodError) {
-        const formattedErrors = error.errors.map(
-          (err) => `${err.path.join('.')}: ${err.message}`
-        );
+        const formattedErrors = error.errors.map((err) => `${err.path.join('.')}: ${err.message}`);
 
         throw new BadRequestException({
           statusCode: 400,
@@ -24,7 +22,7 @@ export class ZodValidationPipe implements PipeTransform {
           error: 'Bad Request',
         });
       }
-      
+
       throw new BadRequestException('Validation failed');
     }
   }

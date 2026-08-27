@@ -8,7 +8,10 @@ describe('AdminController', () => {
   let adminService: jest.Mocked<AdminService>;
 
   const mockUserId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  const mockAdminWallet = 'GAADMIN777777777777777777777777777777777777777777777777777';
   const mockWallet = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
+  const mockAppId = 'b1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  const mockLoanId = 'l1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -19,6 +22,7 @@ describe('AdminController', () => {
           useValue: {
             updateUserRole: jest.fn(),
             getSystemHealth: jest.fn(),
+            listMerchantApplications: jest.fn(),
             overrideLoan: jest.fn(),
             approveMerchant: jest.fn(),
           },
@@ -86,20 +90,71 @@ describe('AdminController', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // GET /admin/merchants/applications
+  // ---------------------------------------------------------------------------
+  describe('listMerchantApplications', () => {
+    it('should return merchant applications list', async () => {
+      const mockResult = {
+        applications: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      };
+      adminService.listMerchantApplications.mockResolvedValue(mockResult);
+
+      const result = await controller.listMerchantApplications({
+        status: 'pending',
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: mockResult,
+        message: 'Merchant applications retrieved successfully',
+      });
+      expect(adminService.listMerchantApplications).toHaveBeenCalledWith('pending', 20, 0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // POST /admin/loans/:id/override
   // ---------------------------------------------------------------------------
   describe('overrideLoan', () => {
     it('should return loan override response', async () => {
-      adminService.overrideLoan.mockResolvedValue({
-        loanId: mockUserId,
-        status: 'override_pending',
-        message: `Loan override for ${mockUserId} is pending implementation.`,
-      });
+      const mockResponse = {
+        loanId: mockLoanId,
+        previousStatus: 'active',
+        status: 'completed',
+        action: 'FORCE_SETTLE',
+        reason: 'Proof of wire payment received',
+        overriddenBy: mockAdminWallet,
+        timestamp: '2026-08-27T10:00:00.000Z',
+      };
 
-      const result = await controller.overrideLoan(mockUserId);
+      adminService.overrideLoan.mockResolvedValue(mockResponse);
+
+      const result = await controller.overrideLoan(
+        mockLoanId,
+        {
+          targetStatus: 'completed',
+          reason: 'Proof of wire payment received',
+          action: 'FORCE_SETTLE',
+        },
+        { wallet: mockAdminWallet },
+      );
 
       expect(result.success).toBe(true);
-      expect(result.data.status).toBe('override_pending');
+      expect(result.data).toEqual(mockResponse);
+      expect(adminService.overrideLoan).toHaveBeenCalledWith(
+        mockLoanId,
+        {
+          targetStatus: 'completed',
+          reason: 'Proof of wire payment received',
+          action: 'FORCE_SETTLE',
+        },
+        mockAdminWallet,
+      );
     });
   });
 
@@ -108,16 +163,29 @@ describe('AdminController', () => {
   // ---------------------------------------------------------------------------
   describe('approveMerchant', () => {
     it('should return merchant approval response', async () => {
-      adminService.approveMerchant.mockResolvedValue({
-        merchantId: mockUserId,
+      const mockResponse = {
+        applicationId: mockAppId,
+        wallet: mockWallet,
         status: 'approved',
-        message: `Merchant ${mockUserId} has been approved (stub).`,
-      });
+        message: 'Merchant application has been approved and activated.',
+        merchantId: 'merchant-uuid-1',
+      };
 
-      const result = await controller.approveMerchant(mockUserId);
+      adminService.approveMerchant.mockResolvedValue(mockResponse);
+
+      const result = await controller.approveMerchant(
+        mockAppId,
+        { approved: true },
+        { wallet: mockAdminWallet },
+      );
 
       expect(result.success).toBe(true);
-      expect(result.data.status).toBe('approved');
+      expect(result.data).toEqual(mockResponse);
+      expect(adminService.approveMerchant).toHaveBeenCalledWith(
+        mockAppId,
+        { approved: true },
+        mockAdminWallet,
+      );
     });
   });
 });

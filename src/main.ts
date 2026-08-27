@@ -21,10 +21,7 @@ const BANNER = `
 `;
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter(),
-  );
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 4000);
@@ -53,9 +50,7 @@ async function bootstrap() {
   });
 
   // CORS configuration
-  const origin = corsOrigin === '*'
-    ? '*'
-    : corsOrigin.split(',').map((item) => item.trim());
+  const origin = corsOrigin === '*' ? '*' : corsOrigin.split(',').map((item) => item.trim());
 
   app.enableCors({
     origin,
@@ -89,4 +84,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-

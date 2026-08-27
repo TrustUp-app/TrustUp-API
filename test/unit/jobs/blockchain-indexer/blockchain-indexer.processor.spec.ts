@@ -224,9 +224,7 @@ describe('BlockchainIndexerProcessor', () => {
   // =========================================================================
 
   describe('idempotency', () => {
-    function setupSingleEventRun(
-      parsedEvent: any,
-    ) {
+    function setupSingleEventRun(parsedEvent: any) {
       cursorChain.single.mockResolvedValue({
         data: null,
         error: { code: 'PGRST116' },
@@ -307,8 +305,26 @@ describe('BlockchainIndexerProcessor', () => {
       });
 
       const fakeEvents = [
-        { id: '300-0-0', type: 'contract', ledger: 300, ledgerClosedAt: '', pagingToken: '', inSuccessfulContractCall: true, topic: [], value: {} as any },
-        { id: '300-0-1', type: 'contract', ledger: 300, ledgerClosedAt: '', pagingToken: '', inSuccessfulContractCall: true, topic: [], value: {} as any },
+        {
+          id: '300-0-0',
+          type: 'contract',
+          ledger: 300,
+          ledgerClosedAt: '',
+          pagingToken: '',
+          inSuccessfulContractCall: true,
+          topic: [],
+          value: {} as any,
+        },
+        {
+          id: '300-0-1',
+          type: 'contract',
+          ledger: 300,
+          ledgerClosedAt: '',
+          pagingToken: '',
+          inSuccessfulContractCall: true,
+          topic: [],
+          value: {} as any,
+        },
       ];
 
       mockServer.getEvents.mockResolvedValue({
@@ -323,7 +339,13 @@ describe('BlockchainIndexerProcessor', () => {
           txHash: '300-0-0',
           ledgerSequence: 300,
           type: LoanEventType.LOAN_CREATED,
-          payload: { loanId: 'L1', userWallet: 'G...', principalAmount: 100, interestAmount: 5, dueDate: null } as LoanCreatedPayload,
+          payload: {
+            loanId: 'L1',
+            userWallet: 'G...',
+            principalAmount: 100,
+            interestAmount: 5,
+            dueDate: null,
+          } as LoanCreatedPayload,
         })
         .mockReturnValueOnce({
           eventId: '300-0-1',

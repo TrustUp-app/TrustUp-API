@@ -9,12 +9,7 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { SubmitTransactionRequestDto } from './dto/submit-transaction-request.dto';
 import { SubmitTransactionResponseDto } from './dto/submit-transaction-response.dto';
@@ -43,7 +38,10 @@ export class TransactionsController {
     description: 'Transaction submitted successfully — hash returned with pending status',
     type: SubmitTransactionResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Malformed XDR, invalid signature, or Stellar rejection' })
+  @ApiResponse({
+    status: 400,
+    description: 'Malformed XDR, invalid signature, or Stellar rejection',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
   @ApiResponse({ status: 503, description: 'Stellar network temporarily unavailable' })
   async submitTransaction(

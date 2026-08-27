@@ -1,9 +1,9 @@
-import { 
-  Controller, 
-  Post, 
+import {
+  Controller,
+  Post,
   Delete,
-  Body, 
-  HttpCode, 
+  Body,
+  HttpCode,
   HttpStatus,
   Req,
   BadRequestException,
@@ -31,7 +31,8 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({
     summary: 'Register a new user account with complete profile',
-    description: 'Creates a new user account. Accepts multipart/form-data with wallet address, username, display name, terms acceptance, and an optional profile image (max 5MB, JPEG/PNG/WebP). Issues JWT tokens immediately on success.',
+    description:
+      'Creates a new user account. Accepts multipart/form-data with wallet address, username, display name, terms acceptance, and an optional profile image (max 5MB, JPEG/PNG/WebP). Issues JWT tokens immediately on success.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: RegisterRequestDto })
@@ -39,12 +40,12 @@ export class AuthController {
     status: 201,
     description: 'User successfully registered and authenticated',
   })
-  @ApiResponse({ status: 400, description: 'Validation failed or invalid image upload format/size' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed or invalid image upload format/size',
+  })
   @ApiResponse({ status: 409, description: 'Wallet address or username already exists' })
-  async register(
-    @Req() req: FastifyRequest,
-    @Body() dto: RegisterRequestDto,
-  ): Promise<any> {
+  async register(@Req() req: FastifyRequest, @Body() dto: RegisterRequestDto): Promise<any> {
     let profileFile:
       | { buffer: Buffer; mimetype: string; filename: string; originalname: string }
       | undefined;

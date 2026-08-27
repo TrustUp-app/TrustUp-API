@@ -22,20 +22,14 @@ describe('AuthController (e2e)', () => {
     process.env.JWT_REFRESH_SECRET = 'test_jwt_refresh_secret_for_e2e_testing_min_32_chars';
     process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://test.supabase.co';
     process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'test_anon_key';
-    process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'test_service_role_key';
+    process.env.SUPABASE_SERVICE_ROLE_KEY =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || 'test_service_role_key';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
-        AuthModule,
-        UsersModule,
-        HealthModule,
-      ],
+      imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule, UsersModule, HealthModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication<NestFastifyApplication>(
-      new FastifyAdapter(),
-    );
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -71,13 +65,10 @@ describe('AuthController (e2e)', () => {
 
     // Clean up sessions
     if (testWallets.length > 0) {
-      const userIds = await client
-        .from('users')
-        .select('id')
-        .in('wallet_address', testWallets);
+      const userIds = await client.from('users').select('id').in('wallet_address', testWallets);
 
       if (userIds.data && userIds.data.length > 0) {
-        const ids = userIds.data.map(u => u.id);
+        const ids = userIds.data.map((u) => u.id);
         await client.from('sessions').delete().in('user_id', ids);
       }
     }
@@ -110,10 +101,7 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should return 400 with invalid wallet format (too short)', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/nonce')
-        .send({ wallet: 'G123' })
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/nonce').send({ wallet: 'G123' }).expect(400);
     });
 
     it('should return 400 with invalid wallet format (does not start with G)', async () => {
@@ -124,17 +112,11 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should return 400 with empty wallet', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/nonce')
-        .send({ wallet: '' })
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/nonce').send({ wallet: '' }).expect(400);
     });
 
     it('should return 400 with missing wallet field', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/nonce')
-        .send({})
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/nonce').send({}).expect(400);
     });
 
     it('should return 400 with additional non-whitelisted fields', async () => {
@@ -150,10 +132,7 @@ describe('AuthController (e2e)', () => {
 
   describe('POST /auth/verify', () => {
     it('should return 400 with empty body', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/verify')
-        .send({})
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/verify').send({}).expect(400);
     });
 
     it('should return 400 with invalid wallet format', async () => {
@@ -180,10 +159,7 @@ describe('AuthController (e2e)', () => {
       const wallet = createTestKeypair().publicKey();
       const nonce = 'a1b2c3d4e5f67890abcdef1234567890a1b2c3d4e5f67890abcdef1234567890';
 
-      await request(app.getHttpServer())
-        .post('/auth/verify')
-        .send({ wallet, nonce })
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/verify').send({ wallet, nonce }).expect(400);
     });
 
     it('should return 401 when nonce does not exist in database', async () => {
@@ -316,10 +292,7 @@ describe('AuthController (e2e)', () => {
       testUsernames.push(registerData.username);
 
       // Register first time
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(registerData)
-        .expect(201);
+      await request(app.getHttpServer()).post('/auth/register').send(registerData).expect(201);
 
       // Try to register again with same wallet
       const duplicateData = createMockRegisterRequest({
@@ -328,10 +301,7 @@ describe('AuthController (e2e)', () => {
       });
       testUsernames.push(duplicateData.username);
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(duplicateData)
-        .expect(409);
+      await request(app.getHttpServer()).post('/auth/register').send(duplicateData).expect(409);
     });
 
     it('should return 409 when username already exists', async () => {
@@ -340,10 +310,7 @@ describe('AuthController (e2e)', () => {
       testUsernames.push(registerData.username);
 
       // Register first time
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(registerData)
-        .expect(201);
+      await request(app.getHttpServer()).post('/auth/register').send(registerData).expect(201);
 
       // Try to register again with same username
       const duplicateData = createMockRegisterRequest({
@@ -352,10 +319,7 @@ describe('AuthController (e2e)', () => {
       });
       testWallets.push(duplicateData.walletAddress);
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(duplicateData)
-        .expect(409);
+      await request(app.getHttpServer()).post('/auth/register').send(duplicateData).expect(409);
     });
 
     it('should return 400 with invalid wallet format', async () => {
@@ -363,10 +327,7 @@ describe('AuthController (e2e)', () => {
         walletAddress: 'INVALID_WALLET',
       });
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(invalidData)
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/register').send(invalidData).expect(400);
     });
 
     it('should return 400 with invalid username format', async () => {
@@ -375,10 +336,7 @@ describe('AuthController (e2e)', () => {
       });
       testWallets.push(invalidData.walletAddress);
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(invalidData)
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/register').send(invalidData).expect(400);
     });
 
     it('should return 400 when terms not accepted', async () => {
@@ -388,10 +346,7 @@ describe('AuthController (e2e)', () => {
       testWallets.push(invalidData.walletAddress);
       testUsernames.push(invalidData.username);
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(invalidData)
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/register').send(invalidData).expect(400);
     });
   });
 
@@ -401,10 +356,7 @@ describe('AuthController (e2e)', () => {
       testWallets.push(registerData.walletAddress);
       testUsernames.push(registerData.username);
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(registerData)
-        .expect(201);
+      await request(app.getHttpServer()).post('/auth/register').send(registerData).expect(201);
 
       // Verify database state
       const client = supabaseService.getServiceRoleClient();
@@ -560,17 +512,11 @@ describe('AuthController (e2e)', () => {
         .expect(200);
 
       // Verify the old refresh token is rotated (deleted) and no longer works
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
 
     it('POST /auth/refresh - should return 400 when body is empty', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({})
-        .expect(400);
+      await request(app.getHttpServer()).post('/auth/refresh').send({}).expect(400);
     });
 
     it('POST /auth/refresh - should return 400 when refreshToken is empty', async () => {
@@ -596,23 +542,14 @@ describe('AuthController (e2e)', () => {
     });
 
     it('DELETE /auth/logout - should log out successfully and revoke refresh token', async () => {
-      await request(app.getHttpServer())
-        .delete('/auth/logout')
-        .send({ refreshToken })
-        .expect(204);
+      await request(app.getHttpServer()).delete('/auth/logout').send({ refreshToken }).expect(204);
 
       // Verify the refresh token is now revoked
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
 
     it('DELETE /auth/logout - should return 400 when body is empty', async () => {
-      await request(app.getHttpServer())
-        .delete('/auth/logout')
-        .send({})
-        .expect(400);
+      await request(app.getHttpServer()).delete('/auth/logout').send({}).expect(400);
     });
 
     it('DELETE /auth/logout - should return 401 with invalid token signature', async () => {

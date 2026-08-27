@@ -30,7 +30,9 @@ describe('repositories', () => {
     const query = createQuery({ data: { deposited_amount: '125.5' }, error: null });
     service.getServiceRoleClient.mockReturnValue({ from: jest.fn().mockReturnValue(query) });
 
-    await expect(new LiquidityRepository(service as any).findTotalInvested('wallet')).resolves.toBe(125.5);
+    await expect(new LiquidityRepository(service as any).findTotalInvested('wallet')).resolves.toBe(
+      125.5,
+    );
     expect(query.eq).toHaveBeenCalledWith('provider_wallet', 'wallet');
   });
 
@@ -38,7 +40,9 @@ describe('repositories', () => {
     const query = createQuery({ data: null, error: null });
     service.getServiceRoleClient.mockReturnValue({ from: jest.fn().mockReturnValue(query) });
 
-    await expect(new LiquidityRepository(service as any).findTotalInvested('wallet')).resolves.toBe(0);
+    await expect(new LiquidityRepository(service as any).findTotalInvested('wallet')).resolves.toBe(
+      0,
+    );
   });
 
   it('loads active loan balances for a wallet', async () => {
@@ -87,7 +91,9 @@ describe('repositories', () => {
       });
     service.getServiceRoleClient.mockReturnValue({ from: jest.fn().mockReturnValue(query) });
 
-    await expect(new TransactionsRepository(service as any).findByHash('abc')).resolves.toMatchObject({
+    await expect(
+      new TransactionsRepository(service as any).findByHash('abc'),
+    ).resolves.toMatchObject({
       lookupColumn: 'transaction_hash',
       hash: 'abc',
     });

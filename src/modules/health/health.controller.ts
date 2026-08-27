@@ -22,4 +22,3 @@ export class HealthController {
     return this.healthService.checkDatabase();
   }
 }
-

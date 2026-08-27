@@ -31,7 +31,12 @@ describe('@Roles() decorator', () => {
 
     const reflector = new Reflector();
     const roles = reflector.get<UserRole[]>(ROLES_KEY, TestClass);
-    expect(roles).toEqual([UserRole.ADMIN, UserRole.MERCHANT, UserRole.LP_PROVIDER, UserRole.BORROWER]);
+    expect(roles).toEqual([
+      UserRole.ADMIN,
+      UserRole.MERCHANT,
+      UserRole.LP_PROVIDER,
+      UserRole.BORROWER,
+    ]);
   });
 
   it('should set empty array when called with no arguments', () => {

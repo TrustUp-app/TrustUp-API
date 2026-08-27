@@ -16,8 +16,7 @@ const VALID_HASH = 'a'.repeat(64);
 const NOW_ISO = '2026-04-28T10:00:00.000Z';
 
 /** Builds a deterministic 64-char hex hash from a counter */
-const makeHash = (n: number, char = 'a') =>
-  `${String(n).padStart(2, '0')}${char.repeat(62)}`;
+const makeHash = (n: number, char = 'a') => `${String(n).padStart(2, '0')}${char.repeat(62)}`;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -69,9 +68,7 @@ describe('Transaction Submission Flow (e2e)', () => {
       if (table === 'transactions') {
         return {
           insert: jest.fn().mockImplementation(async (payload: Record<string, unknown>) => {
-            const hash = String(
-              payload.transaction_hash ?? payload.hash ?? '',
-            ).toLowerCase();
+            const hash = String(payload.transaction_hash ?? payload.hash ?? '').toLowerCase();
             if (hash) {
               state.dbRecords.set(hash, {
                 type: payload.type as TransactionType,
@@ -502,8 +499,7 @@ describe('Transaction Submission Flow (e2e)', () => {
           result: null,
           error: {
             code: 'op_underfunded',
-            message:
-              'Insufficient balance to complete one or more operations in this transaction.',
+            message: 'Insufficient balance to complete one or more operations in this transaction.',
             operationCodes: ['op_underfunded'],
           },
           submittedAt: NOW_ISO,
@@ -581,7 +577,7 @@ describe('Transaction Submission Flow (e2e)', () => {
         // Use a hash with actual a-f letters so upper/lowercase differ meaningfully.
         // 'a'.repeat(64).toUpperCase() === 'a'.repeat(64) — no difference.
         const lowerHash = 'abcdef1234567890'.repeat(4); // 64 hex chars
-        const upperHash = lowerHash.toUpperCase();       // ABCDEF1234567890...
+        const upperHash = lowerHash.toUpperCase(); // ABCDEF1234567890...
 
         state.txByHash.set(lowerHash, {
           type: TransactionType.DEPOSIT,
@@ -874,9 +870,9 @@ describe('Transaction Submission Flow (e2e)', () => {
     it('should return 400 for invalid hash format on status check', async () => {
       const cases = [
         'short',
-        'a'.repeat(63),      // one char too short
-        'a'.repeat(65),      // one char too long
-        'g'.repeat(64),      // non-hex char
+        'a'.repeat(63), // one char too short
+        'a'.repeat(65), // one char too long
+        'g'.repeat(64), // non-hex char
         '',
       ];
 

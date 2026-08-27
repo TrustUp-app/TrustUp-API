@@ -335,4 +335,83 @@ export class LoansRepository extends BaseRepository {
       total: count ?? 0,
     };
   }
+
+  /**
+   * Finds full loan details by internal UUID or public loan_id.
+   */
+  async findDetailedById(idOrLoanId: string): Promise<LoanRecord | null> {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idOrLoanId);
+    const query = this.supabaseService.getServiceRoleClient().from('loans').select('*');
+
+    const { data, error } = isUuid
+      ? await query.eq('id', idOrLoanId).maybeSingle()
+      : await query.eq('loan_id', idOrLoanId).maybeSingle();
+
+    this.throwOnError(error);
+    return data as LoanRecord | null;
+  }
+
+  /**
+   * Records an audit entry in the loan_overrides table.
+   */
+  async recordOverride(override: {
+    loan_id: string;
+    admin_id?: string | null;
+    admin_wallet: string;
+    previous_status: string;
+    new_status: string;
+    action: string;
+    reason: string;
+  }): Promise<void> {
+    const { error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('loan_overrides')
+      .insert({
+        loan_id: override.loan_id,
+        admin_id: override.admin_id ?? null,
+        admin_wallet: override.admin_wallet,
+        previous_status: override.previous_status,
+        new_status: override.new_status,
+        action: override.action,
+        reason: override.reason,
+      });
+
+    this.throwOnError(error);
+  }
+
+  /**
+   * Applies an administrative override to a loan record.
+   */
+  async applyLoanOverride(
+    id: string,
+    updates: Record<string, unknown>,
+    previousStatus: string,
+    userWallet: string,
+    loanCode: string,
+    merchantId: string | null,
+  ): Promise<LoanRecord> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('loans')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    this.throwOnError(error);
+
+    if (typeof updates.status === 'string' && updates.status !== previousStatus) {
+      await this.dispatchStatusChange(
+        { loan_id: loanCode, merchant_id: merchantId, status: previousStatus },
+        updates.status,
+        userWallet,
+      );
+    }
+
+    return data as LoanRecord;
+  }
 }

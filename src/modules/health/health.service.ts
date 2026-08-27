@@ -16,10 +16,10 @@ export class HealthService {
   async checkDatabase() {
     try {
       const client = this.supabaseService.getClient();
-      
+
       // Test connection by checking auth (this always works if connected)
       const { error } = await client.auth.getSession();
-      
+
       // If we get here without a critical error, connection is working
       // "Invalid Refresh Token" is expected when no session exists
       if (error && error.message !== 'Invalid Refresh Token' && !error.message.includes('JWT')) {
@@ -43,4 +43,3 @@ export class HealthService {
     }
   }
 }
-

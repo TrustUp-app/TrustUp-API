@@ -7,7 +7,8 @@ import { ApiProperty } from '@nestjs/swagger';
  */
 export class LoanPaymentRequestDto {
   @ApiProperty({
-    description: 'Payment amount in USD (must be greater than zero and not exceed remaining balance)',
+    description:
+      'Payment amount in USD (must be greater than zero and not exceed remaining balance)',
     example: 108.33,
     minimum: 0.01,
   })

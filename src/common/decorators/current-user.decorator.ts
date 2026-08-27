@@ -11,9 +11,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
  *
  * DO NOT implement business logic here — wait for API-03.
  */
-export const CurrentUser = createParamDecorator(
-    (_data: unknown, ctx: ExecutionContext) => {
-        const request = ctx.switchToHttp().getRequest();
-        return request.user;
-    },
-);
+export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
+  const request = ctx.switchToHttp().getRequest();
+  return request.user;
+});

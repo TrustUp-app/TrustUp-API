@@ -1,4 +1,13 @@
-import { Controller, Get, Patch, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -73,5 +82,29 @@ export class UsersController {
   ): Promise<{ success: boolean; data: UpdateUserProfileDto; message: string }> {
     const data = await this.usersService.updateProfile(user.wallet, dto);
     return { success: true, data, message: 'Profile updated successfully' };
+  }
+
+  /**
+   * POST /users/me/become-lp
+   *
+   * Self-service onboarding to LP provider role.
+   *
+   * @param user - Injected by @CurrentUser() from req.user set by JwtAuthGuard
+   */
+  @Post('me/become-lp')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Self-service upgrade to lp_provider role',
+    description: 'Upgrades the authenticated user to the lp_provider role.',
+  })
+  @ApiResponse({ status: 200, description: 'Role upgraded to lp_provider' })
+  @ApiResponse({ status: 401, description: 'Unauthorized — missing or invalid JWT' })
+  async becomeLp(
+    @CurrentUser() user: { wallet: string },
+  ): Promise<{ success: boolean; data: { wallet: string; role: string }; message: string }> {
+    const data = await this.usersService.becomeLp(user.wallet);
+    return { success: true, data: { wallet: data.wallet, role: data.role }, message: data.message };
   }
 }

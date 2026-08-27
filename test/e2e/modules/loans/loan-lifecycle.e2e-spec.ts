@@ -135,7 +135,8 @@ describe('Loan Lifecycle Flow (e2e)', () => {
                   name: 'TechStore',
                   logo: 'https://cdn.trustup.app/techstore.png',
                 },
-                loan_payments: loan.status === 'completed' ? [{ amount: loan.total_repayment }] : [],
+                loan_payments:
+                  loan.status === 'completed' ? [{ amount: loan.total_repayment }] : [],
               })),
             error: null,
             count: state.loans.filter((loan) =>
@@ -196,7 +197,10 @@ describe('Loan Lifecycle Flow (e2e)', () => {
             return statusFilter ? loan.status === statusFilter : true;
           })
           .map((loan) => {
-            if (queryState.selected.includes('remaining_balance') && !queryState.selected.includes('id,')) {
+            if (
+              queryState.selected.includes('remaining_balance') &&
+              !queryState.selected.includes('id,')
+            ) {
               return { remaining_balance: loan.remaining_balance };
             }
 
@@ -285,9 +289,11 @@ describe('Loan Lifecycle Flow (e2e)', () => {
 
     mockReputationContractClient.getScore.mockResolvedValue(state.score);
 
-    mockCreditLineContract.buildCreateLoanTransaction.mockImplementation(async (_wallet, payload) => {
-      return `xdr-loan-create-${payload.loanId}`;
-    });
+    mockCreditLineContract.buildCreateLoanTransaction.mockImplementation(
+      async (_wallet, payload) => {
+        return `xdr-loan-create-${payload.loanId}`;
+      },
+    );
 
     mockCreditLineContract.buildRepayLoanTx.mockImplementation(async (_wallet, loanId, amount) => {
       return `xdr-loan-repay-${loanId}-${amount}`;

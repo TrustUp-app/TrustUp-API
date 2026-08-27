@@ -78,4 +78,4 @@ import { YieldDistributionModule } from './jobs/yield-distribution/yield-distrib
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

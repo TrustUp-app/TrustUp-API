@@ -38,10 +38,7 @@ describe('ReputationController (e2e)', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
-        ReputationModule,
-      ],
+      imports: [ConfigModule.forRoot({ isGlobal: true }), ReputationModule],
     })
       .overrideProvider(ReputationContractClient)
       .useValue(mockReputationContract)
@@ -51,9 +48,7 @@ describe('ReputationController (e2e)', () => {
       .useValue(mockJwtAuthGuard)
       .compile();
 
-    app = moduleFixture.createNestApplication<NestFastifyApplication>(
-      new FastifyAdapter(),
-    );
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -146,9 +141,7 @@ describe('ReputationController (e2e)', () => {
     });
 
     it('should return 500 when the blockchain RPC is unavailable', async () => {
-      mockReputationContract.getScore.mockRejectedValue(
-        new Error('request timeout'),
-      );
+      mockReputationContract.getScore.mockRejectedValue(new Error('request timeout'));
 
       const res = await app.inject({
         method: 'GET',

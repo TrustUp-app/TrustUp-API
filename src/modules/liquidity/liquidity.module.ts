@@ -10,6 +10,7 @@ import { LiquidityRepository } from '../../database/repositories/liquidity.repos
 import { SorobanService } from '../../blockchain/soroban/soroban.service';
 import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-contract.client';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { UsersRepository } from '../../database/repositories/users.repository';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.in
   providers: [
     LiquidityService,
     LiquidityRepository,
+    UsersRepository,
     SupabaseService,
     SorobanService,
     LiquidityContractClient,

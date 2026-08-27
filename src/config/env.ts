@@ -33,10 +33,4 @@ export const env = envSchema.parse({
   CORS_ORIGIN: process.env.CORS_ORIGIN,
 });
 
-export const ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-];
-
+export const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];

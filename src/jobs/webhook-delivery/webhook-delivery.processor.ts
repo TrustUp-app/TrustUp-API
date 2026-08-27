@@ -51,7 +51,13 @@ export class WebhookDeliveryProcessor extends WorkerHost {
       .maybeSingle();
 
     if (endpointError || !endpoint || !endpoint.is_active) {
-      await this.mark(deliveryId, job.attemptsMade + 1, 'failed', null, 'endpoint inactive or missing');
+      await this.mark(
+        deliveryId,
+        job.attemptsMade + 1,
+        'failed',
+        null,
+        'endpoint inactive or missing',
+      );
       return;
     }
 

@@ -113,4 +113,54 @@ export class MerchantsRepository extends BaseRepository {
 
     return data as MerchantDetailRecord;
   }
+
+  /**
+   * Upserts a merchant record by wallet address (activates and updates details upon approval).
+   */
+  async upsertMerchant(record: {
+    wallet: string;
+    name: string;
+    logo?: string | null;
+    description?: string | null;
+    category?: string | null;
+    website?: string | null;
+    is_active?: boolean;
+  }): Promise<MerchantDetailRecord> {
+    const payload: Record<string, unknown> = {
+      wallet: record.wallet,
+      name: record.name,
+      is_active: record.is_active ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    if (record.logo !== undefined) payload.logo = record.logo;
+    if (record.description !== undefined) payload.description = record.description;
+    if (record.category !== undefined) payload.category = record.category;
+    if (record.website !== undefined) payload.website = record.website;
+
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('merchants')
+      .upsert(payload, { onConflict: 'wallet' })
+      .select('*')
+      .single();
+
+    this.throwOnError(error);
+    return data as MerchantDetailRecord;
+  }
+
+  /**
+   * Updates a merchant's is_active status.
+   */
+  async updateActiveStatus(id: string, isActive: boolean): Promise<MerchantDetailRecord> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('merchants')
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    this.throwOnError(error);
+    return data as MerchantDetailRecord;
+  }
 }

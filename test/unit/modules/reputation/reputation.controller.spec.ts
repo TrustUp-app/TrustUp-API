@@ -69,18 +69,14 @@ describe('ReputationController', () => {
     });
 
     it('should throw BadRequestException for invalid wallet format (too short)', async () => {
-      await expect(controller.getScore('GABC')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(controller.getScore('GABC')).rejects.toThrow(BadRequestException);
       expect(reputationService.getReputationScore).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException for wallet not starting with G', async () => {
       const badWallet = 'XABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
 
-      await expect(controller.getScore(badWallet)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(controller.getScore(badWallet)).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException with validation error message', async () => {
@@ -90,13 +86,9 @@ describe('ReputationController', () => {
     });
 
     it('should propagate service errors to the caller', async () => {
-      mockReputationService.getReputationScore.mockRejectedValue(
-        new Error('Contract read failed'),
-      );
+      mockReputationService.getReputationScore.mockRejectedValue(new Error('Contract read failed'));
 
-      await expect(controller.getScore(validWallet)).rejects.toThrow(
-        'Contract read failed',
-      );
+      await expect(controller.getScore(validWallet)).rejects.toThrow('Contract read failed');
     });
   });
 
@@ -119,15 +111,9 @@ describe('ReputationController', () => {
     });
 
     it('should propagate service errors to the caller', async () => {
-      mockReputationService.getReputationScore.mockRejectedValue(
-        new Error('Contract read failed'),
-      );
+      mockReputationService.getReputationScore.mockRejectedValue(new Error('Contract read failed'));
 
-      await expect(controller.getMyScore(mockCurrentUser)).rejects.toThrow(
-        'Contract read failed',
-      );
+      await expect(controller.getMyScore(mockCurrentUser)).rejects.toThrow('Contract read failed');
     });
   });
-
 });
-

@@ -18,7 +18,10 @@ import {
   HorizonTransactionResponse,
   StellarService,
 } from '../../blockchain/stellar/stellar.service';
-import { StellarNetworkError, TransactionNotFoundError } from '../../blockchain/stellar/stellar.errors';
+import {
+  StellarNetworkError,
+  TransactionNotFoundError,
+} from '../../blockchain/stellar/stellar.errors';
 import { SubmitTransactionRequestDto, TransactionType } from './dto/submit-transaction-request.dto';
 import { SubmitTransactionResponseDto } from './dto/submit-transaction-response.dto';
 import {
@@ -96,7 +99,10 @@ export class TransactionsService {
     try {
       const horizonTransaction = await this.stellarService.getTransaction(normalizedHash);
 
-      const response = this.buildFinalizedTransactionResponse(horizonTransaction, transactionRecord);
+      const response = this.buildFinalizedTransactionResponse(
+        horizonTransaction,
+        transactionRecord,
+      );
 
       await this.cacheManager.set(cacheKey, response, FINALIZED_TRANSACTION_CACHE_TTL);
       await this.persistFinalizedTransaction(transactionRecord, response);
@@ -131,7 +137,9 @@ export class TransactionsService {
 
   private handleHorizonError(error: unknown): never {
     const err = error as {
-      response?: { data?: { extras?: { result_codes?: { transaction?: string; operations?: string[] } } } };
+      response?: {
+        data?: { extras?: { result_codes?: { transaction?: string; operations?: string[] } } };
+      };
       message?: string;
     };
 
@@ -218,7 +226,9 @@ export class TransactionsService {
     transactionRecord: TransactionRecord | null,
   ): TransactionStatusResponseDto {
     const status: TransactionStatus = transaction.successful ? 'success' : 'failed';
-    const error = transaction.successful ? null : this.extractFailureDetails(transaction.result_xdr);
+    const error = transaction.successful
+      ? null
+      : this.extractFailureDetails(transaction.result_xdr);
 
     return {
       hash: transaction.hash.toLowerCase(),
@@ -258,7 +268,10 @@ export class TransactionsService {
 
       return {
         code: txCode,
-        message: HORIZON_ERROR_MAP[primaryCode] ?? HORIZON_ERROR_MAP[txCode] ?? this.humanizeCode(primaryCode),
+        message:
+          HORIZON_ERROR_MAP[primaryCode] ??
+          HORIZON_ERROR_MAP[txCode] ??
+          this.humanizeCode(primaryCode),
         operationCodes: operationCodes.length > 0 ? operationCodes : undefined,
       };
     } catch (error) {
