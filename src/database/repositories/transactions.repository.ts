@@ -1,5 +1,5 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
-import { SupabaseService } from "../supabase.client";
+import { Injectable } from "@nestjs/common";
+import { BaseRepository } from "./base.repository";
 
 export type TransactionLookupColumn = "hash" | "transaction_hash";
 export type TransactionStatus = "pending" | "success" | "failed";
@@ -18,8 +18,7 @@ export interface TransactionRecord {
 }
 
 @Injectable()
-export class TransactionsRepository {
-  constructor(private readonly supabaseService: SupabaseService) {}
+export class TransactionsRepository extends BaseRepository {
 
   async create(record: {
     userWallet: string;
@@ -192,12 +191,4 @@ export class TransactionsRepository {
     return message.includes("column") && message.includes("does not exist");
   }
 
-  private throwOnError(error: { message?: string } | null): void {
-    if (error) {
-      throw new InternalServerErrorException({
-        code: "DATABASE_QUERY_ERROR",
-        message: error.message,
-      });
-    }
-  }
 }

@@ -1,6 +1,7 @@
-import { Injectable, InternalServerErrorException, Optional } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { WebhookDispatchService } from "../../jobs/webhook-delivery/webhook-dispatch.service";
 import { SupabaseService } from "../supabase.client";
+import { BaseRepository } from "./base.repository";
 
 export interface LoanRecord {
   id: string;
@@ -68,11 +69,13 @@ export interface MerchantActiveLoanRecord {
 }
 
 @Injectable()
-export class LoansRepository {
+export class LoansRepository extends BaseRepository {
   constructor(
-    private readonly supabaseService: SupabaseService,
+    supabaseService: SupabaseService,
     @Optional() private readonly webhookDispatch?: WebhookDispatchService,
-  ) {}
+  ) {
+    super(supabaseService);
+  }
 
   async findById(
     id: string,
@@ -341,12 +344,4 @@ export class LoansRepository {
     };
   }
 
-  private throwOnError(error: { code?: string; message?: string } | null): void {
-    if (error) {
-      throw new InternalServerErrorException({
-        code: "DATABASE_QUERY_ERROR",
-        message: error.message,
-      });
-    }
-  }
 }

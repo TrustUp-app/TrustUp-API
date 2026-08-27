@@ -1,5 +1,5 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
-import { SupabaseService } from "../supabase.client";
+import { Injectable } from "@nestjs/common";
+import { BaseRepository } from "./base.repository";
 
 export interface NotificationRecord {
   id: string;
@@ -14,9 +14,7 @@ export interface NotificationRecord {
 }
 
 @Injectable()
-export class NotificationsRepository {
-  constructor(private readonly supabaseService: SupabaseService) {}
-
+export class NotificationsRepository extends BaseRepository {
   async findByUser(
     wallet: string,
     options: { limit: number; offset: number; unread?: boolean; type?: string },
@@ -108,12 +106,4 @@ export class NotificationsRepository {
     this.throwOnError(error);
   }
 
-  private throwOnError(error: { message?: string } | null): void {
-    if (error) {
-      throw new InternalServerErrorException({
-        code: "DATABASE_QUERY_ERROR",
-        message: error.message,
-      });
-    }
-  }
 }

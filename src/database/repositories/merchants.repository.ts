@@ -1,5 +1,5 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { SupabaseService } from '../supabase.client';
+import { Injectable } from '@nestjs/common';
+import { BaseRepository } from './base.repository';
 
 export interface MerchantRecord {
     id: string;
@@ -32,9 +32,7 @@ export interface FindAllMerchantsResult {
  * Encapsulates all Supabase queries for the `merchants` table.
  */
 @Injectable()
-export class MerchantsRepository {
-    constructor(private readonly supabaseService: SupabaseService) { }
-
+export class MerchantsRepository extends BaseRepository {
     /**
      * Returns a paginated list of merchants filtered by is_active status.
      * Also returns the total count of matching records for pagination metadata.
@@ -47,12 +45,7 @@ export class MerchantsRepository {
             .eq('is_active', isActive)
             .range(offset, offset + limit - 1);
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
 
         return {
             merchants: (data as MerchantRecord[]) ?? [],
@@ -70,12 +63,7 @@ export class MerchantsRepository {
             .select('id, wallet, name, logo, category, is_active')
             .eq('is_active', true);
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
 
         return (data as MerchantRecord[]) ?? [];
     }
@@ -95,10 +83,7 @@ export class MerchantsRepository {
             if (error.code === 'PGRST116') {
                 return null; // Not found
             }
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
+            this.throwOnError(error);
         }
 
         return data as MerchantDetailRecord;
@@ -119,10 +104,7 @@ export class MerchantsRepository {
             if (error.code === 'PGRST116') {
                 return null; // Not found
             }
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
+            this.throwOnError(error);
         }
 
         return data as MerchantDetailRecord;

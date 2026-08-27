@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { SupabaseService } from '../supabase.client';
 import { UpdateUserDto } from '../../modules/users/dto/update-user.dto';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { BaseRepository } from './base.repository';
 
 export interface UserPreferencesRecord {
     notifications_enabled: boolean;
@@ -29,9 +29,7 @@ export interface UserRecord {
  * Row Level Security does not block the auto-creation on first login.
  */
 @Injectable()
-export class UsersRepository {
-    constructor(private readonly supabaseService: SupabaseService) { }
-
+export class UsersRepository extends BaseRepository {
     /**
      * Returns the user row (with nested preferences) matching the wallet,
      * or null if no matching row exists yet.
@@ -49,12 +47,7 @@ export class UsersRepository {
             .eq('wallet_address', wallet)
             .maybeSingle();
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
         if (!data) return null;
 
         // Normalize: Supabase returns the nested relation as an array
@@ -80,12 +73,7 @@ export class UsersRepository {
             .select('id, wallet_address, username, display_name, avatar_url, status, role, created_at')
             .single();
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
 
         return { ...(data as Omit<UserRecord, 'user_preferences'>), user_preferences: null } as UserRecord;
     }
@@ -102,12 +90,7 @@ export class UsersRepository {
             .select('notifications_enabled, language, theme')
             .single();
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
         return data as UserPreferencesRecord;
     }
 
@@ -175,12 +158,7 @@ export class UsersRepository {
             .eq('username', username)
             .maybeSingle();
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
         return !!data;
     }
 
@@ -280,12 +258,7 @@ export class UsersRepository {
             .eq('id', userId)
             .maybeSingle();
 
-        if (error) {
-            throw new InternalServerErrorException({
-                code: 'DATABASE_QUERY_ERROR',
-                message: error.message,
-            });
-        }
+        this.throwOnError(error);
         if (!data) return null;
 
         const raw = data as unknown as Omit<UserRecord, 'user_preferences'> & {

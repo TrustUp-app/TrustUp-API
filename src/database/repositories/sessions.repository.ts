@@ -1,5 +1,5 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { SupabaseService } from '../supabase.client';
+import { Injectable } from '@nestjs/common';
+import { BaseRepository } from './base.repository';
 
 export interface SessionRecord {
   id: string;
@@ -17,9 +17,7 @@ export interface SessionRecord {
  * Encapsulates all Supabase queries for the `sessions` table.
  */
 @Injectable()
-export class SessionsRepository {
-  constructor(private readonly supabaseService: SupabaseService) {}
-
+export class SessionsRepository extends BaseRepository {
   /**
    * Finds a session by its refresh token hash.
    */
@@ -31,12 +29,7 @@ export class SessionsRepository {
       .eq('refresh_token_hash', hash)
       .maybeSingle();
 
-    if (error) {
-      throw new InternalServerErrorException({
-        code: 'DATABASE_QUERY_ERROR',
-        message: error.message,
-      });
-    }
+    this.throwOnError(error);
     return data;
   }
 
@@ -51,7 +44,14 @@ export class SessionsRepository {
     deviceInfo?: string;
     ipAddress?: string;
   }): Promise<SessionRecord> {
-    const insertData: any = {
+    const insertData: {
+      user_id: string;
+      refresh_token_hash: string;
+      expires_at: string;
+      token_family?: string;
+      device_info?: string;
+      ip_address?: string;
+    } = {
       user_id: session.userId,
       refresh_token_hash: session.refreshTokenHash,
       expires_at: session.expiresAt,
@@ -73,12 +73,7 @@ export class SessionsRepository {
       .select('*')
       .single();
 
-    if (error) {
-      throw new InternalServerErrorException({
-        code: 'DATABASE_QUERY_ERROR',
-        message: error.message,
-      });
-    }
+    this.throwOnError(error);
     return data;
   }
 
@@ -92,12 +87,7 @@ export class SessionsRepository {
       .delete()
       .eq('id', id);
 
-    if (error) {
-      throw new InternalServerErrorException({
-        code: 'DATABASE_QUERY_ERROR',
-        message: error.message,
-      });
-    }
+    this.throwOnError(error);
   }
 
   /**
@@ -110,12 +100,7 @@ export class SessionsRepository {
       .delete()
       .eq('refresh_token_hash', hash);
 
-    if (error) {
-      throw new InternalServerErrorException({
-        code: 'DATABASE_QUERY_ERROR',
-        message: error.message,
-      });
-    }
+    this.throwOnError(error);
   }
 
   /**
@@ -129,12 +114,7 @@ export class SessionsRepository {
       .update({ revoked_at: new Date().toISOString() })
       .eq('token_family', tokenFamily);
 
-    if (error) {
-      throw new InternalServerErrorException({
-        code: 'DATABASE_QUERY_ERROR',
-        message: error.message,
-      });
-    }
+    this.throwOnError(error);
   }
 
   /**
@@ -158,12 +138,7 @@ export class SessionsRepository {
       .select('*')
       .single();
 
-    if (error) {
-      throw new InternalServerErrorException({
-        code: 'DATABASE_QUERY_ERROR',
-        message: error.message,
-      });
-    }
+    this.throwOnError(error);
     return data;
   }
 }

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { SupabaseService } from "../supabase.client";
+import { BaseRepository } from "./base.repository";
 
 export interface ActiveLoanLiquidityRecord {
   loan_amount: number | string;
@@ -7,9 +7,7 @@ export interface ActiveLoanLiquidityRecord {
 }
 
 @Injectable()
-export class LiquidityRepository {
-  constructor(private readonly supabaseService: SupabaseService) {}
-
+export class LiquidityRepository extends BaseRepository {
   async findTotalInvested(wallet: string): Promise<number> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
