@@ -1,7 +1,7 @@
-import { Injectable, Optional } from "@nestjs/common";
-import { WebhookDispatchService } from "../../jobs/webhook-delivery/webhook-dispatch.service";
-import { SupabaseService } from "../supabase.client";
-import { BaseRepository } from "./base.repository";
+import { Injectable, Optional } from '@nestjs/common';
+import { WebhookDispatchService } from '../../jobs/webhook-delivery/webhook-dispatch.service';
+import { SupabaseService } from '../supabase.client';
+import { BaseRepository } from './base.repository';
 
 export interface LoanRecord {
   id: string;
@@ -35,7 +35,7 @@ export interface CreateLoanRecord {
   total_repayment: number;
   remaining_balance: number;
   term: number;
-  status: "pending";
+  status: 'pending';
   next_payment_due: string | null;
   xdr_hash: string;
 }
@@ -81,19 +81,19 @@ export class LoansRepository extends BaseRepository {
     id: string,
   ): Promise<Pick<
     LoanRecord,
-    "id" | "loan_id" | "user_wallet" | "status" | "remaining_balance"
+    'id' | 'loan_id' | 'user_wallet' | 'status' | 'remaining_balance'
   > | null> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("id, loan_id, user_wallet, status, remaining_balance")
-      .eq("id", id)
+      .from('loans')
+      .select('id, loan_id, user_wallet, status, remaining_balance')
+      .eq('id', id)
       .maybeSingle();
 
     this.throwOnError(error);
     return data as Pick<
       LoanRecord,
-      "id" | "loan_id" | "user_wallet" | "status" | "remaining_balance"
+      'id' | 'loan_id' | 'user_wallet' | 'status' | 'remaining_balance'
     > | null;
   }
 
@@ -108,19 +108,19 @@ export class LoansRepository extends BaseRepository {
   ): Promise<{ loans: LoanRecord[]; total: number }> {
     let query = this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
+      .from('loans')
       .select(
-        "id, loan_id, merchant_id, amount, loan_amount, guarantee, interest_rate, total_repayment, remaining_balance, term, status, next_payment_due, created_at, completed_at, defaulted_at, merchants(id, name, logo), loan_payments(amount)",
-        { count: "exact" },
+        'id, loan_id, merchant_id, amount, loan_amount, guarantee, interest_rate, total_repayment, remaining_balance, term, status, next_payment_due, created_at, completed_at, defaulted_at, merchants(id, name, logo), loan_payments(amount)',
+        { count: 'exact' },
       )
-      .eq("user_wallet", wallet)
-      .order("created_at", { ascending: false })
+      .eq('user_wallet', wallet)
+      .order('created_at', { ascending: false })
       .range(options.offset, options.offset + options.limit - 1);
 
     if (options.status) {
-      query = query.eq("status", options.status);
+      query = query.eq('status', options.status);
     } else if (options.statuses) {
-      query = query.in("status", options.statuses);
+      query = query.in('status', options.statuses);
     }
 
     const { data, error, count } = await query;
@@ -128,31 +128,26 @@ export class LoansRepository extends BaseRepository {
     return { loans: (data ?? []) as LoanRecord[], total: count ?? 0 };
   }
 
-  async findActiveByUser(
-    wallet: string,
-  ): Promise<Pick<LoanRecord, "remaining_balance">[]> {
+  async findActiveByUser(wallet: string): Promise<Pick<LoanRecord, 'remaining_balance'>[]> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("remaining_balance")
-      .eq("user_wallet", wallet)
-      .eq("status", "active");
+      .from('loans')
+      .select('remaining_balance')
+      .eq('user_wallet', wallet)
+      .eq('status', 'active');
 
     this.throwOnError(error);
-    return (data ?? []) as Pick<LoanRecord, "remaining_balance">[];
+    return (data ?? []) as Pick<LoanRecord, 'remaining_balance'>[];
   }
 
-  async hasPendingWithXdrHash(
-    wallet: string,
-    xdrHash: string,
-  ): Promise<boolean> {
+  async hasPendingWithXdrHash(wallet: string, xdrHash: string): Promise<boolean> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("id")
-      .eq("user_wallet", wallet)
-      .eq("xdr_hash", xdrHash)
-      .eq("status", "pending")
+      .from('loans')
+      .select('id')
+      .eq('user_wallet', wallet)
+      .eq('xdr_hash', xdrHash)
+      .eq('status', 'pending')
       .maybeSingle();
 
     this.throwOnError(error);
@@ -165,10 +160,10 @@ export class LoansRepository extends BaseRepository {
   ): Promise<LoanStatusRecord | null> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("loan_id, status")
-      .eq("loan_id", loanId)
-      .eq("user_wallet", userWallet)
+      .from('loans')
+      .select('loan_id, status')
+      .eq('loan_id', loanId)
+      .eq('user_wallet', userWallet)
       .maybeSingle();
 
     this.throwOnError(error);
@@ -181,10 +176,10 @@ export class LoansRepository extends BaseRepository {
   ): Promise<LoanBalanceRecord | null> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("remaining_balance, status")
-      .eq("loan_id", loanId)
-      .eq("user_wallet", userWallet)
+      .from('loans')
+      .select('remaining_balance, status')
+      .eq('loan_id', loanId)
+      .eq('user_wallet', userWallet)
       .maybeSingle();
 
     this.throwOnError(error);
@@ -194,9 +189,9 @@ export class LoansRepository extends BaseRepository {
   async createLoan(record: CreateLoanRecord): Promise<void> {
     const { error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
+      .from('loans')
       .insert(record);
-    if (error?.code === "23505") {
+    if (error?.code === '23505') {
       throw error;
     }
     this.throwOnError(error);
@@ -211,13 +206,13 @@ export class LoansRepository extends BaseRepository {
     const before = await this.findWebhookContext(loanId, userWallet);
     let query = this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
+      .from('loans')
       .update({ status, updated_at: new Date().toISOString() })
-      .eq("loan_id", loanId)
-      .eq("user_wallet", userWallet);
+      .eq('loan_id', loanId)
+      .eq('user_wallet', userWallet);
 
     if (onlyFromStatus) {
-      query = query.eq("status", onlyFromStatus);
+      query = query.eq('status', onlyFromStatus);
     }
 
     const { error } = await query;
@@ -230,14 +225,14 @@ export class LoansRepository extends BaseRepository {
     userWallet: string,
     values: Record<string, unknown>,
   ): Promise<void> {
-    const nextStatus = typeof values.status === "string" ? values.status : undefined;
+    const nextStatus = typeof values.status === 'string' ? values.status : undefined;
     const before = nextStatus ? await this.findWebhookContext(loanId, userWallet) : null;
     const { error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
+      .from('loans')
       .update(values)
-      .eq("loan_id", loanId)
-      .eq("user_wallet", userWallet);
+      .eq('loan_id', loanId)
+      .eq('user_wallet', userWallet);
 
     this.throwOnError(error);
     if (nextStatus) {
@@ -251,10 +246,10 @@ export class LoansRepository extends BaseRepository {
   ): Promise<{ loan_id: string; merchant_id: string | null; status: string } | null> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("loan_id, merchant_id, status")
-      .eq("loan_id", loanId)
-      .eq("user_wallet", userWallet)
+      .from('loans')
+      .select('loan_id, merchant_id, status')
+      .eq('loan_id', loanId)
+      .eq('user_wallet', userWallet)
       .maybeSingle();
     this.throwOnError(error);
     return data as { loan_id: string; merchant_id: string | null; status: string } | null;
@@ -280,7 +275,7 @@ export class LoansRepository extends BaseRepository {
   async recordPayment(payment: Record<string, unknown>): Promise<void> {
     const { error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loan_payments")
+      .from('loan_payments')
       .insert(payment);
 
     this.throwOnError(error);
@@ -290,14 +285,12 @@ export class LoansRepository extends BaseRepository {
    * Returns every loan for a single merchant with only the columns
    * needed for portfolio/analytics/score aggregation.
    */
-  async findStatsByMerchant(
-    merchantId: string,
-  ): Promise<MerchantLoanStatsRecord[]> {
+  async findStatsByMerchant(merchantId: string): Promise<MerchantLoanStatsRecord[]> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("merchant_id, loan_amount, remaining_balance, status, created_at")
-      .eq("merchant_id", merchantId);
+      .from('loans')
+      .select('merchant_id, loan_amount, remaining_balance, status, created_at')
+      .eq('merchant_id', merchantId);
 
     this.throwOnError(error);
     return (data ?? []) as MerchantLoanStatsRecord[];
@@ -310,9 +303,9 @@ export class LoansRepository extends BaseRepository {
   async findStatsForAllMerchants(): Promise<MerchantLoanStatsRecord[]> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select("merchant_id, loan_amount, remaining_balance, status, created_at")
-      .not("merchant_id", "is", null);
+      .from('loans')
+      .select('merchant_id, loan_amount, remaining_balance, status, created_at')
+      .not('merchant_id', 'is', null);
 
     this.throwOnError(error);
     return (data ?? []) as MerchantLoanStatsRecord[];
@@ -327,14 +320,13 @@ export class LoansRepository extends BaseRepository {
   ): Promise<{ loans: MerchantActiveLoanRecord[]; total: number }> {
     const { data, error, count } = await this.supabaseService
       .getServiceRoleClient()
-      .from("loans")
-      .select(
-        "id, loan_id, amount, remaining_balance, status, next_payment_due, created_at",
-        { count: "exact" },
-      )
-      .eq("merchant_id", merchantId)
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
+      .from('loans')
+      .select('id, loan_id, amount, remaining_balance, status, next_payment_due, created_at', {
+        count: 'exact',
+      })
+      .eq('merchant_id', merchantId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
       .range(options.offset, options.offset + options.limit - 1);
 
     this.throwOnError(error);
@@ -343,5 +335,4 @@ export class LoansRepository extends BaseRepository {
       total: count ?? 0,
     };
   }
-
 }

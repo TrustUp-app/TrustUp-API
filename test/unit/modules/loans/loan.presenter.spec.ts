@@ -43,7 +43,11 @@ describe('LoanPresenter', () => {
   describe('normalizeMerchant', () => {
     it('unwraps a single-element merchants array', () => {
       const row = baseRow({ merchants: [{ id: 'm1', name: 'Acme', logo: 'l.png' }] });
-      expect(LoanPresenter.normalizeMerchant(row)).toEqual({ id: 'm1', name: 'Acme', logo: 'l.png' });
+      expect(LoanPresenter.normalizeMerchant(row)).toEqual({
+        id: 'm1',
+        name: 'Acme',
+        logo: 'l.png',
+      });
     });
 
     it('falls back to merchant_id when the relation is missing', () => {

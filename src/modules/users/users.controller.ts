@@ -57,9 +57,14 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: "Update the authenticated user's profile",
-    description: 'Updates display name, avatar URL, and/or preferences. Only provided fields are modified.',
+    description:
+      'Updates display name, avatar URL, and/or preferences. Only provided fields are modified.',
   })
-  @ApiResponse({ status: 200, description: 'Profile updated successfully', type: UpdateUserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile updated successfully',
+    type: UpdateUserProfileDto,
+  })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
   @ApiResponse({ status: 401, description: 'Unauthorized — missing or invalid JWT' })
   async updateProfile(

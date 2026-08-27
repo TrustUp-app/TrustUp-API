@@ -55,7 +55,10 @@ export class WebhooksController {
   @ApiResponse({ status: 200, description: 'Webhook endpoint retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized — missing or invalid JWT' })
   @ApiResponse({ status: 403, description: 'Forbidden — wallet is not registered as a merchant' })
-  @ApiResponse({ status: 404, description: 'Webhook endpoint not found or not owned by this merchant' })
+  @ApiResponse({
+    status: 404,
+    description: 'Webhook endpoint not found or not owned by this merchant',
+  })
   getOne(@CurrentUser() user: { wallet: string }, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.webhooks.getMine(user.wallet, id);
   }
@@ -67,7 +70,10 @@ export class WebhooksController {
   @ApiResponse({ status: 400, description: 'Invalid URL or events payload' })
   @ApiResponse({ status: 401, description: 'Unauthorized — missing or invalid JWT' })
   @ApiResponse({ status: 403, description: 'Forbidden — wallet is not registered as a merchant' })
-  @ApiResponse({ status: 404, description: 'Webhook endpoint not found or not owned by this merchant' })
+  @ApiResponse({
+    status: 404,
+    description: 'Webhook endpoint not found or not owned by this merchant',
+  })
   update(
     @CurrentUser() user: { wallet: string },
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -82,7 +88,10 @@ export class WebhooksController {
   @ApiResponse({ status: 200, description: 'Webhook endpoint deleted successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized — missing or invalid JWT' })
   @ApiResponse({ status: 403, description: 'Forbidden — wallet is not registered as a merchant' })
-  @ApiResponse({ status: 404, description: 'Webhook endpoint not found or not owned by this merchant' })
+  @ApiResponse({
+    status: 404,
+    description: 'Webhook endpoint not found or not owned by this merchant',
+  })
   remove(@CurrentUser() user: { wallet: string }, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.webhooks.deleteMine(user.wallet, id);
   }

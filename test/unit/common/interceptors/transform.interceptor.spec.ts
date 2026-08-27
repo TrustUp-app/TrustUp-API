@@ -23,7 +23,9 @@ describe('TransformInterceptor', () => {
 
   it('includes the @ResponseMessage metadata when present', async () => {
     const reflector = {
-      get: jest.fn((key: string) => (key === RESPONSE_MESSAGE_KEY ? 'Created successfully' : undefined)),
+      get: jest.fn((key: string) =>
+        key === RESPONSE_MESSAGE_KEY ? 'Created successfully' : undefined,
+      ),
     } as unknown as Reflector;
     const interceptor = new TransformInterceptor(reflector);
     const next: CallHandler = { handle: () => of({ id: 'abc' }) };

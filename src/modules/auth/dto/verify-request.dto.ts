@@ -1,6 +1,9 @@
 import { IsString, IsNotEmpty, Matches, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { STELLAR_WALLET_REGEX, STELLAR_WALLET_INVALID_MESSAGE } from '../../../common/constants/stellar';
+import {
+  STELLAR_WALLET_REGEX,
+  STELLAR_WALLET_INVALID_MESSAGE,
+} from '../../../common/constants/stellar';
 
 /**
  * DTO for verifying a Stellar wallet signature and issuing JWT tokens.
@@ -36,7 +39,8 @@ export class VerifyRequestDto {
   @ApiProperty({
     description:
       'Base64-encoded Ed25519 signature of the nonce bytes, signed with the wallet private key',
-    example: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    example:
+      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
   })
   @IsString()
   @IsNotEmpty({ message: 'Signature is required' })

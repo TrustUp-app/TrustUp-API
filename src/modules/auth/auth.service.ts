@@ -179,10 +179,7 @@ export class AuthService {
 
     try {
       const keypair = Keypair.fromPublicKey(dto.wallet);
-      const isValid = keypair.verify(
-        Buffer.from(dto.nonce),
-        Buffer.from(dto.signature, 'base64'),
-      );
+      const isValid = keypair.verify(Buffer.from(dto.nonce), Buffer.from(dto.signature, 'base64'));
 
       if (!isValid) {
         throw new UnauthorizedException({
@@ -439,5 +436,5 @@ export class AuthService {
 
     const hash = createHash('sha256').update(refreshToken).digest('hex');
     await this.sessionsRepository.deleteByHash(hash);
-  } 
+  }
 }

@@ -1,6 +1,9 @@
 import { IsString, IsNotEmpty, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { STELLAR_WALLET_REGEX, STELLAR_WALLET_INVALID_MESSAGE } from '../../../common/constants/stellar';
+import {
+  STELLAR_WALLET_REGEX,
+  STELLAR_WALLET_INVALID_MESSAGE,
+} from '../../../common/constants/stellar';
 
 /**
  * DTO for requesting a nonce for wallet signature authentication.
