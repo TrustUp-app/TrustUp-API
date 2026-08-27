@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npx jest --runInBand
+
+      # The e2e suite is intentionally not run here: most specs build their
+      # TestingModule from real feature modules (not mocks), so they wire a
+      # real SupabaseService and fail with "supabaseUrl is required" without
+      # a live Supabase project (per CONTRIBUTING.md), and a couple of others
+      # need a running Redis for BullMQ. Neither is available in CI. Run
+      # `npm run test:e2e` locally against your own Supabase/Redis instance
+      # before opening a PR that touches e2e-covered behavior.
