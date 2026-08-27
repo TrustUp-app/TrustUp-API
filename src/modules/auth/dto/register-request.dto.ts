@@ -8,11 +8,15 @@ export class RegisterRequestDto {
   @Matches(/^G[A-Z0-9]{55}$/, { message: 'Invalid Stellar wallet address format' })
   walletAddress: string;
 
-  @ApiProperty({ description: 'Unique username, minimum 3 characters, alphanumeric and underscore only' })
+  @ApiProperty({
+    description: 'Unique username, minimum 3 characters, alphanumeric and underscore only',
+  })
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  @Matches(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain alphanumeric characters and underscores' })
+  @Matches(/^[a-zA-Z0-9_]+$/, {
+    message: 'Username can only contain alphanumeric characters and underscores',
+  })
   username: string;
 
   @ApiProperty({ description: 'Display name, minimum 2 characters' })
@@ -26,7 +30,13 @@ export class RegisterRequestDto {
   @Equals('true', { message: 'Terms must be accepted' })
   termsAccepted: string;
 
-  @ApiPropertyOptional({ type: 'string', format: 'binary', description: 'Profile image (JPEG, PNG, WebP, max 2MB)' })
+  /** Swagger documentation only — the actual multipart file is read directly
+   *  from the request stream in AuthController.register, not from this DTO. */
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Profile image (JPEG, PNG, WebP, max 2MB)',
+  })
   @IsOptional()
-  profileImage?: any;
+  profileImage?: unknown;
 }

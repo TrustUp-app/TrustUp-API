@@ -81,13 +81,13 @@ export class WebhooksService {
     return data;
   }
 
-  async deleteMine(wallet: string, id: string) {
+  async deleteMine(wallet: string, id: string): Promise<{ id: string }> {
     const merchant = await this.requireMerchant(wallet);
     const endpoint = await this.getEndpoint(id);
     this.assertOwner(endpoint.merchant_id, merchant.id);
     const { error } = await this.db().from('webhook_endpoints').delete().eq('id', id);
     this.throwOnError(error);
-    return { success: true };
+    return { id };
   }
 
   async adminList() {

@@ -1,5 +1,9 @@
 import { IsString, IsNotEmpty, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  STELLAR_WALLET_REGEX,
+  STELLAR_WALLET_INVALID_MESSAGE,
+} from '../../../common/constants/stellar';
 
 /**
  * DTO for requesting a nonce for wallet signature authentication.
@@ -14,9 +18,6 @@ export class NonceRequestDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'Wallet address is required' })
-  @Matches(/^G[A-Z2-7]{55}$/, {
-    message:
-      'Invalid Stellar wallet address. Must start with G and have 55 base32 characters [A-Z2-7]',
-  })
+  @Matches(STELLAR_WALLET_REGEX, { message: STELLAR_WALLET_INVALID_MESSAGE })
   wallet: string;
 }

@@ -1,8 +1,8 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
-import { SupabaseService } from "../supabase.client";
+import { Injectable } from '@nestjs/common';
+import { BaseRepository } from './base.repository';
 
-export type TransactionLookupColumn = "hash" | "transaction_hash";
-export type TransactionStatus = "pending" | "success" | "failed";
+export type TransactionLookupColumn = 'hash' | 'transaction_hash';
+export type TransactionStatus = 'pending' | 'success' | 'failed';
 
 export interface TransactionRecord {
   id?: string;
@@ -18,9 +18,7 @@ export interface TransactionRecord {
 }
 
 @Injectable()
-export class TransactionsRepository {
-  constructor(private readonly supabaseService: SupabaseService) {}
-
+export class TransactionsRepository extends BaseRepository {
   async create(record: {
     userWallet: string;
     hash: string;
@@ -33,7 +31,7 @@ export class TransactionsRepository {
         transaction_hash: record.hash,
         user_wallet: record.userWallet,
         type: record.type,
-        status: "pending",
+        status: 'pending',
         xdr: record.xdr,
         submitted_at: submittedAt,
         updated_at: submittedAt,
@@ -42,7 +40,7 @@ export class TransactionsRepository {
         hash: record.hash,
         user_wallet: record.userWallet,
         type: record.type,
-        status: "pending",
+        status: 'pending',
         xdr: record.xdr,
         submitted_at: submittedAt,
         updated_at: submittedAt,
@@ -53,7 +51,7 @@ export class TransactionsRepository {
     for (const payload of payloads) {
       const { error } = await this.supabaseService
         .getServiceRoleClient()
-        .from("transactions")
+        .from('transactions')
         .insert(payload);
       if (!error) return;
       lastError = error;
@@ -64,16 +62,11 @@ export class TransactionsRepository {
   }
 
   async findByHash(hash: string): Promise<TransactionRecord | null> {
-    for (const lookupColumn of [
-      "hash",
-      "transaction_hash",
-    ] as TransactionLookupColumn[]) {
+    for (const lookupColumn of ['hash', 'transaction_hash'] as TransactionLookupColumn[]) {
       const { data, error } = await this.supabaseService
         .getServiceRoleClient()
-        .from("transactions")
-        .select(
-          `${lookupColumn}, type, status, submitted_at, completed_at, updated_at`,
-        )
+        .from('transactions')
+        .select(`${lookupColumn}, type, status, submitted_at, completed_at, updated_at`)
         .eq(lookupColumn, hash)
         .maybeSingle();
 
@@ -101,18 +94,16 @@ export class TransactionsRepository {
   async findPending(limit = 100): Promise<TransactionRecord[]> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("transactions")
-      .select(
-        "id, user_wallet, transaction_hash, type, status, xdr, submitted_at, updated_at",
-      )
-      .eq("status", "pending")
-      .order("submitted_at", { ascending: true })
+      .from('transactions')
+      .select('id, user_wallet, transaction_hash, type, status, xdr, submitted_at, updated_at')
+      .eq('status', 'pending')
+      .order('submitted_at', { ascending: true })
       .limit(limit);
 
     this.throwOnError(error);
     return (data ?? []).map((row: Record<string, unknown>) => ({
       id: String(row.id),
-      lookupColumn: "transaction_hash",
+      lookupColumn: 'transaction_hash',
       hash: String(row.transaction_hash),
       userWallet: String(row.user_wallet),
       type: row.type ? String(row.type) : null,
@@ -134,15 +125,15 @@ export class TransactionsRepository {
       returnRecord?: boolean;
     } = {},
   ): Promise<TransactionRecord | null> {
-    const lookupColumn = options.lookupColumn ?? "transaction_hash";
+    const lookupColumn = options.lookupColumn ?? 'transaction_hash';
     let query = this.supabaseService
       .getServiceRoleClient()
-      .from("transactions")
+      .from('transactions')
       .update({ ...values, status })
       .eq(lookupColumn, hash);
 
     if (options.onlyPending) {
-      query = query.eq("status", "pending");
+      query = query.eq('status', 'pending');
     }
 
     if (!options.returnRecord) {
@@ -152,9 +143,7 @@ export class TransactionsRepository {
     }
 
     const { data, error } = await query
-      .select(
-        "id, user_wallet, transaction_hash, type, status, xdr, submitted_at, updated_at",
-      )
+      .select('id, user_wallet, transaction_hash, type, status, xdr, submitted_at, updated_at')
       .maybeSingle();
     this.throwOnError(error);
     if (!data) return null;
@@ -177,27 +166,16 @@ export class TransactionsRepository {
   async deleteOlderThan(threshold: string): Promise<void> {
     const { error } = await this.supabaseService
       .getServiceRoleClient()
-      .from("transactions")
+      .from('transactions')
       .delete()
-      .lt("submitted_at", threshold)
-      .neq("status", "pending");
+      .lt('submitted_at', threshold)
+      .neq('status', 'pending');
 
     this.throwOnError(error);
   }
 
-  private isUnknownColumnError(
-    error: { message?: string } | null | undefined,
-  ): boolean {
-    const message = error?.message?.toLowerCase() ?? "";
-    return message.includes("column") && message.includes("does not exist");
-  }
-
-  private throwOnError(error: { message?: string } | null): void {
-    if (error) {
-      throw new InternalServerErrorException({
-        code: "DATABASE_QUERY_ERROR",
-        message: error.message,
-      });
-    }
+  private isUnknownColumnError(error: { message?: string } | null | undefined): boolean {
+    const message = error?.message?.toLowerCase() ?? '';
+    return message.includes('column') && message.includes('does not exist');
   }
 }

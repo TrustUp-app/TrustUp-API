@@ -1,8 +1,8 @@
 import { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 
-export function setupSwagger(app: INestApplication): void {
-  const config = new DocumentBuilder()
+export function buildSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
+  return new DocumentBuilder()
     .setTitle('TrustUp API')
     .setDescription('TrustUp Backend API - Off-chain orchestration layer for BNPL on Stellar')
     .setVersion('1.0')
@@ -27,7 +27,13 @@ export function setupSwagger(app: INestApplication): void {
       'admin-key',
     )
     .build();
+}
 
-  const document = SwaggerModule.createDocument(app, config);
+export function buildSwaggerDocument(app: INestApplication): OpenAPIObject {
+  return SwaggerModule.createDocument(app, buildSwaggerConfig());
+}
+
+export function setupSwagger(app: INestApplication): void {
+  const document = buildSwaggerDocument(app);
   SwaggerModule.setup('docs', app, document);
 }
