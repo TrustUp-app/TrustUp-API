@@ -25,6 +25,13 @@ import {
 /** Nonce expiration time in seconds (5 minutes) */
 const NONCE_EXPIRATION_SECONDS = 300;
 
+interface RefreshTokenPayload {
+  wallet: string;
+  type: 'refresh';
+  iat?: number;
+  exp?: number;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -295,13 +302,13 @@ export class AuthService {
    * Invalidates the old refresh token by deleting it from the database (token rotation).
    */
   async refreshTokens(refreshToken: string): Promise<AuthResponseDto> {
-    let payload: any;
+    let payload: RefreshTokenPayload;
     try {
       payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       });
-    } catch (error: any) {
-      if (error?.name === 'TokenExpiredError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'TokenExpiredError') {
         throw new UnauthorizedException({
           code: 'AUTH_TOKEN_EXPIRED',
           message: 'Refresh token has expired.',
@@ -403,14 +410,14 @@ export class AuthService {
    * Explicitly logs out a user session by revoking (deleting) the refresh token.
    */
   async logout(refreshToken: string): Promise<void> {
-    let payload: any;
+    let payload: RefreshTokenPayload;
     try {
       payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       });
-    } catch (error: any) {
-      if (error?.name === 'TokenExpiredError') {
-        const decoded = this.jwtService.decode(refreshToken) as any;
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'TokenExpiredError') {
+        const decoded = this.jwtService.decode(refreshToken) as RefreshTokenPayload | null;
         if (decoded && decoded.type === 'refresh') {
           const hash = createHash('sha256').update(refreshToken).digest('hex');
           await this.sessionsRepository.deleteByHash(hash);

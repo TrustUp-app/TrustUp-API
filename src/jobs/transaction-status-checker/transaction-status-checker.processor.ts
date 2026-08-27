@@ -4,7 +4,7 @@ import { Job } from 'bullmq';
 import { LoansRepository } from '../../database/repositories/loans.repository';
 import { NotificationsRepository } from '../../database/repositories/notifications.repository';
 import { TransactionsRepository } from '../../database/repositories/transactions.repository';
-import { StellarService } from '../../blockchain/stellar/stellar.service';
+import { StellarService, HorizonTransactionResponse } from '../../blockchain/stellar/stellar.service';
 import { TransactionNotFoundError } from '../../blockchain/stellar/stellar.errors';
 import { TransactionType } from '../../modules/transactions/dto/submit-transaction-request.dto';
 import { parseTransactionMetadata } from './transaction-metadata.util';
@@ -188,12 +188,12 @@ export class TransactionStatusCheckerProcessor extends WorkerHost {
     }
   }
 
-  private extractHorizonError(response: any): string | undefined {
+  private extractHorizonError(response: HorizonTransactionResponse): string | undefined {
     if (!response) {
       return undefined;
     }
 
-    const codes = response.result_codes;
+    const codes = response.result_codes as { transaction?: string } | undefined;
     if (!codes) {
       return undefined;
     }

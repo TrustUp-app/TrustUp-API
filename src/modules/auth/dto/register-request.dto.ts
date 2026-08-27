@@ -26,7 +26,9 @@ export class RegisterRequestDto {
   @Equals('true', { message: 'Terms must be accepted' })
   termsAccepted: string;
 
+  /** Swagger documentation only — the actual multipart file is read directly
+   *  from the request stream in AuthController.register, not from this DTO. */
   @ApiPropertyOptional({ type: 'string', format: 'binary', description: 'Profile image (JPEG, PNG, WebP, max 2MB)' })
   @IsOptional()
-  profileImage?: any;
+  profileImage?: unknown;
 }
