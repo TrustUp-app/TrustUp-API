@@ -25,7 +25,9 @@ export class SessionsRepository extends BaseRepository {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
       .from('sessions')
-      .select('id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at, token_family, revoked_at')
+      .select(
+        'id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at, token_family, revoked_at',
+      )
       .eq('refresh_token_hash', hash)
       .maybeSingle();
 
