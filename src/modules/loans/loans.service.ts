@@ -30,12 +30,8 @@ import {
   LoanListQueryDto,
   LoanListStatusFilter,
 } from "./dto/loan-list-query.dto";
-import {
-  LoanListItemDto,
-  LoanListMerchantDto,
-  LoanListResponseDto,
-} from "./dto/loan-list-response.dto";
-import { ReputationTier } from "../reputation/dto/reputation-response.dto";
+import { LoanListResponseDto } from "./dto/loan-list-response.dto";
+import { LoanPresenter, LoanListRow } from "./loan.presenter";
 
 const GUARANTEE_PERCENT = 0.2;
 const LOAN_PERCENT = 0.8;
@@ -45,36 +41,6 @@ interface ValidMerchant {
   id: string;
   name: string;
   is_active: boolean;
-}
-
-interface LoanPaymentRow {
-  amount: number | string | null;
-}
-
-interface LoanMerchantRow {
-  id: string | null;
-  name: string | null;
-  logo: string | null;
-}
-
-interface LoanListRow {
-  id: string;
-  loan_id: string;
-  merchant_id: string | null;
-  amount: number | string;
-  loan_amount: number | string;
-  guarantee: number | string;
-  interest_rate: number | string;
-  total_repayment: number | string;
-  remaining_balance: number | string;
-  term: number;
-  status: LoanListStatusFilter | "pending";
-  next_payment_due: string | null;
-  created_at: string;
-  completed_at: string | null;
-  defaulted_at: string | null;
-  merchants?: LoanMerchantRow | LoanMerchantRow[] | null;
-  loan_payments?: LoanPaymentRow[] | null;
 }
 
 @Injectable()
@@ -260,7 +226,15 @@ export class LoansService {
       });
 
       return {
-        data: loans.map((loan) => this.mapLoanListItem(loan as LoanListRow)),
+        data: loans.map((loan) => {
+          const row = loan as LoanListRow;
+          const schedule = this.generateScheduleFromDate(
+            Number(row.total_repayment),
+            row.term,
+            new Date(row.created_at),
+          );
+          return LoanPresenter.mapLoanListItem(row, schedule);
+        }),
         pagination: { limit, offset, total },
       };
     } catch (error) {
@@ -293,7 +267,7 @@ export class LoansService {
       });
     }
 
-    const { maxCredit, tier } = this.mapScoreToCreditTier(reputationScore);
+    const { maxCredit, tier } = LoanPresenter.mapScoreToCreditTier(reputationScore);
 
     let activeLoans: { remaining_balance: number | string }[];
     try {
@@ -453,88 +427,4 @@ export class LoansService {
     return schedule;
   }
 
-  private mapLoanListItem(loan: LoanListRow): LoanListItemDto {
-    const totalRepayment = Number(loan.total_repayment);
-    const remainingBalance = Number(loan.remaining_balance);
-    const totalPaid = this.roundCurrency(
-      Math.max(0, totalRepayment - remainingBalance),
-    );
-    const schedule = this.generateScheduleFromDate(
-      totalRepayment,
-      loan.term,
-      new Date(loan.created_at),
-    );
-    const paymentIndex = Math.min(
-      loan.loan_payments?.length ?? 0,
-      Math.max(schedule.length - 1, 0),
-    );
-    const scheduledNextPayment = schedule[paymentIndex];
-    const nextPayment =
-      loan.status === LoanListStatusFilter.ACTIVE && remainingBalance > 0
-        ? {
-            dueDate:
-              loan.next_payment_due ?? scheduledNextPayment?.dueDate ?? null,
-            amount:
-              scheduledNextPayment != null
-                ? this.roundCurrency(
-                    Math.min(scheduledNextPayment.amount, remainingBalance),
-                  )
-                : this.roundCurrency(remainingBalance),
-          }
-        : { dueDate: null, amount: null };
-
-    return {
-      id: loan.id,
-      loanId: loan.loan_id,
-      amount: Number(loan.amount),
-      loanAmount: Number(loan.loan_amount),
-      guarantee: Number(loan.guarantee),
-      interestRate: Number(loan.interest_rate),
-      totalRepayment,
-      totalPaid,
-      remainingBalance,
-      term: loan.term,
-      status: loan.status as LoanListStatusFilter,
-      merchant: this.normalizeMerchant(loan),
-      nextPayment,
-      createdAt: loan.created_at,
-      completedAt: loan.completed_at,
-      defaultedAt: loan.defaulted_at,
-    };
-  }
-
-  private normalizeMerchant(loan: LoanListRow): LoanListMerchantDto {
-    const merchant = Array.isArray(loan.merchants)
-      ? loan.merchants[0]
-      : loan.merchants;
-
-    return {
-      id: merchant?.id ?? loan.merchant_id ?? null,
-      name: merchant?.name ?? null,
-      logo: merchant?.logo ?? null,
-    };
-  }
-
-  private roundCurrency(value: number): number {
-    return Math.round(value * 100) / 100;
-  }
-
-  private mapScoreToCreditTier(score: number): {
-    tier: ReputationTier;
-    maxCredit: number;
-  } {
-    if (score >= 90) {
-      return { tier: "gold", maxCredit: 5000 };
-    }
-
-    if (score >= 75) {
-      return { tier: "silver", maxCredit: 3000 };
-    }
-
-    if (score >= 60) {
-      return { tier: "bronze", maxCredit: 1500 };
-    }
-
-    return { tier: "poor", maxCredit: 500 };
-  }
 }
