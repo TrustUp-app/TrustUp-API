@@ -59,92 +59,120 @@ export class WebhookDispatchService {
     );
 
     const occurredAt = new Date().toISOString();
-    const eventId = `${event.loanId}:${event.previousStatus}:${event.status}`;
-    const payload = {
-      event: LOAN_STATUS_CHANGED,
-      event_id: eventId,
-      occurred_at: occurredAt,
-      data: {
-        loan_id: event.loanId,
-        merchant_id: event.merchantId,
-        user_wallet: event.userWallet,
-        previous_status: event.previousStatus,
-        status: event.status,
-      },
-    };
+    const baseEventId = `${event.loanId}:${event.previousStatus}:${event.status}`;
 
     for (const endpoint of targets as { id: string }[]) {
-      const deliveryId = await this.ensureDelivery(endpoint.id, eventId, payload, occurredAt);
-      if (!deliveryId) {
+      const result = await this.ensureDelivery(endpoint.id, baseEventId, occurredAt, event);
+      if (!result) {
         continue;
       }
 
       await this.queue.add(
         'deliver',
         {
-          deliveryId,
+          deliveryId: result.deliveryId,
           endpointId: endpoint.id,
-          eventId,
+          eventId: result.eventId,
         } satisfies WebhookJobData,
         {
           attempts: 5,
           backoff: { type: 'exponential', delay: 2000 },
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 200 },
-          jobId: `${endpoint.id}:${eventId}`,
+          jobId: `${endpoint.id}:${result.eventId}`,
         },
       );
     }
   }
 
+  /**
+   * Finds the next unused occurrence of this transition for this endpoint.
+   * A prior 'pending'/'failed' row for a sequence is reused (safe retry of
+   * the same delivery attempt); a prior 'success' row means that occurrence
+   * was already delivered, so the search advances to the next sequence —
+   * this is what lets the same (loanId, previousStatus, status) transition
+   * fire a second, distinct delivery if it is ever legitimately repeated.
+   */
   private async ensureDelivery(
     endpointId: string,
-    eventId: string,
-    payload: Record<string, unknown>,
+    baseEventId: string,
     occurredAt: string,
-  ): Promise<string | null> {
+    event: LoanStatusChangeEvent,
+  ): Promise<{ deliveryId: string; eventId: string } | null> {
     const db = this.supabase.getServiceRoleClient();
-    const { data, error } = await db
-      .from('webhook_deliveries')
-      .insert({
-        endpoint_id: endpointId,
-        event_id: eventId,
+    const MAX_OCCURRENCES = 1000;
+
+    for (let sequence = 0; sequence < MAX_OCCURRENCES; sequence++) {
+      const eventId = sequence === 0 ? baseEventId : `${baseEventId}:${sequence}`;
+      const payload = {
         event: LOAN_STATUS_CHANGED,
-        payload,
-        status: 'pending',
-        attempts: 0,
-        updated_at: occurredAt,
-      })
-      .select('id, status')
-      .maybeSingle();
-
-    if (!error && data?.id) {
-      return data.id as string;
-    }
-
-    if (error && error.code !== '23505') {
-      this.logger.error(
-        {
-          context: 'WebhookDispatchService',
-          action: 'insertDelivery',
-          endpointId,
-          error: error.message,
+        event_id: eventId,
+        occurred_at: occurredAt,
+        data: {
+          loan_id: event.loanId,
+          merchant_id: event.merchantId,
+          user_wallet: event.userWallet,
+          previous_status: event.previousStatus,
+          status: event.status,
         },
-        'Failed to persist webhook delivery',
-      );
-      return null;
+      };
+
+      const { data, error } = await db
+        .from('webhook_deliveries')
+        .insert({
+          endpoint_id: endpointId,
+          event_id: eventId,
+          event: LOAN_STATUS_CHANGED,
+          payload,
+          status: 'pending',
+          attempts: 0,
+          updated_at: occurredAt,
+        })
+        .select('id, status')
+        .maybeSingle();
+
+      if (!error && data?.id) {
+        return { deliveryId: data.id as string, eventId };
+      }
+
+      if (error && error.code !== '23505') {
+        this.logger.error(
+          {
+            context: 'WebhookDispatchService',
+            action: 'insertDelivery',
+            endpointId,
+            error: error.message,
+          },
+          'Failed to persist webhook delivery',
+        );
+        return null;
+      }
+
+      const existing = await db
+        .from('webhook_deliveries')
+        .select('id, status')
+        .eq('endpoint_id', endpointId)
+        .eq('event_id', eventId)
+        .maybeSingle();
+
+      if (!existing.data) {
+        return null;
+      }
+      if (existing.data.status !== 'success') {
+        return { deliveryId: existing.data.id as string, eventId };
+      }
+      // This occurrence already succeeded — advance to the next sequence.
     }
 
-    const existing = await db
-      .from('webhook_deliveries')
-      .select('id, status')
-      .eq('endpoint_id', endpointId)
-      .eq('event_id', eventId)
-      .maybeSingle();
-
-    if (!existing.data || existing.data.status === 'success') {
-      return null;
-    }
-    return existing.data.id as string;
+    this.logger.error(
+      {
+        context: 'WebhookDispatchService',
+        action: 'ensureDelivery',
+        endpointId,
+        baseEventId,
+      },
+      'Exceeded max tracked occurrences for a single loan status transition',
+    );
+    return null;
   }
 }
