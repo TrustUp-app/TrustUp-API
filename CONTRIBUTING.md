@@ -191,6 +191,12 @@ Please review the following documents before contributing:
 
 ## Common Issues
 
+### Fastify Plugin Version Mismatch
+
+This project uses Fastify v4 (`fastify`). Fastify plugins (`@fastify/helmet`, `@fastify/multipart`, etc.) must be pinned to major versions compatible with Fastify v4 — newer plugin majors target Fastify v5's API and will break `npm run start:dev` and `npm run build`. If you add or bump a Fastify plugin, check its `fastify-plugin` peer/dependency range against the installed `fastify` version, and run `npm dedupe` afterwards if `npm ls fastify` shows more than one resolved version (duplicate installs cause TypeScript type errors on `nest build` even when the versions are otherwise compatible).
+
+Redis is also required locally for BullMQ-backed jobs — see [Redis Setup](#6-redis-setup) above.
+
 ### Supabase Connection Error
 
 - Verify credentials in `.env` match your Supabase project settings
