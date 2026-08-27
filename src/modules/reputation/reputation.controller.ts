@@ -6,7 +6,7 @@ import {
     BadRequestException,
 } from '@nestjs/common';
 import { ReputationService } from './reputation.service';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -33,10 +33,16 @@ export class ReputationController {
 
     @Get(':wallet')
     @ApiOperation({ summary: 'Get reputation score for a specific wallet' })
+    @ApiParam({
+        name: 'wallet',
+        description: 'Stellar wallet address (Ed25519 public key, G + 55 chars)',
+        example: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW',
+    })
     @ApiResponse({
         status: 200,
         description: 'Reputation data retrieved successfully',
     })
+    @ApiResponse({ status: 400, description: 'Invalid Stellar wallet address format' })
     async getScore(@Param('wallet') wallet: string) {
         // Validation: Stellar Ed25519 public key format (G + 55 base32 characters)
         const stellarWalletRegex = /^G[A-Z2-7]{55}$/;
