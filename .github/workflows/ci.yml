@@ -34,3 +34,111 @@ jobs:
       # need a running Redis for BullMQ. Neither is available in CI. Run
       # `npm run test:e2e` locally against your own Supabase/Redis instance
       # before opening a PR that touches e2e-covered behavior.
+
+  # E2E tests run in a separate job with Redis and test environment
+  # Requires repository secrets to be configured for test Supabase project
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    # Only run E2E tests if secrets are available (skip for forks)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create E2E environment file
+        run: |
+          cat > test/.env.e2e << EOF
+          # Supabase Test Instance
+          SUPABASE_URL=${{ secrets.TEST_SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.TEST_SUPABASE_SERVICE_KEY }}
+          
+          # JWT Configuration
+          JWT_SECRET=${{ secrets.TEST_JWT_SECRET }}
+          JWT_REFRESH_SECRET=${{ secrets.TEST_JWT_REFRESH_SECRET }}
+          JWT_ACCESS_EXPIRATION=15m
+          JWT_REFRESH_EXPIRATION=7d
+          NONCE_EXPIRATION=300
+          
+          # Redis
+          REDIS_URL=redis://localhost:6379/1
+          REDIS_PASSWORD=
+          REDIS_DB=1
+          
+          # Stellar Testnet
+          STELLAR_NETWORK=testnet
+          STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+          STELLAR_SOROBAN_URL=https://soroban-testnet.stellar.org
+          STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+          
+          # Contract IDs (optional for E2E with mocks)
+          REPUTATION_CONTRACT_ID=${{ secrets.TEST_REPUTATION_CONTRACT_ID || 'CTEST123' }}
+          CREDIT_LINE_CONTRACT_ID=${{ secrets.TEST_CREDIT_LINE_CONTRACT_ID || 'CTEST456' }}
+          LIQUIDITY_CONTRACT_ID=${{ secrets.TEST_LIQUIDITY_CONTRACT_ID || 'CTEST789' }}
+          MERCHANT_REGISTRY_CONTRACT_ID=${{ secrets.TEST_MERCHANT_REGISTRY_CONTRACT_ID || 'CTEST012' }}
+          
+          # Admin API Key
+          ADMIN_API_KEY=test_admin_api_key_ci
+          
+          # Test Configuration
+          PORT=4001
+          NODE_ENV=test
+          API_URL=http://localhost:4001
+          CORS_ORIGINS=http://localhost:4001
+          CORS_CREDENTIALS=true
+          
+          # Logging
+          LOG_LEVEL=error
+          LOG_PRETTY=false
+          
+          # Rate Limiting
+          RATE_LIMIT_ENABLED=false
+          RATE_LIMIT_MAX=1000
+          
+          # Jobs (disabled for E2E)
+          JOBS_ENABLED=false
+          INDEXER_INTERVAL=999999
+          TX_STATUS_INTERVAL=999999
+          REMINDER_CRON=0 0 1 1 *
+          
+          # Mock flags
+          MOCK_STELLAR_SDK=false
+          MOCK_SOROBAN_RPC=false
+          EOF
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
+
+      - name: Upload E2E test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: |
+            coverage/
+            test-results/
+          retention-days: 7
