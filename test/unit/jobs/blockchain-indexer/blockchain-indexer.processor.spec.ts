@@ -7,10 +7,12 @@ import { SorobanService } from '../../../../src/blockchain/soroban/soroban.servi
 import {
   LoanEventType,
   ReputationEventType,
+  LiquidityEventType,
   LoanCreatedPayload,
   LoanRepaidPayload,
   LoanDefaultedPayload,
   ScoreChangedPayload,
+  LiquidityDepositedPayload,
 } from '../../../../src/jobs/blockchain-indexer/interfaces';
 
 // ---------------------------------------------------------------------------
@@ -30,6 +32,7 @@ function createChain(overrides: Record<string, unknown> = {}) {
     upsert: jest.fn().mockResolvedValue({ error: null }),
     eq: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue({ data: null, error: null }),
+    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
   };
   Object.assign(chain, overrides);
   return chain;
@@ -49,6 +52,7 @@ describe('BlockchainIndexerProcessor', () => {
   let paymentChain: ReturnType<typeof createChain>;
   let reputationHistoryChain: ReturnType<typeof createChain>;
   let reputationCacheChain: ReturnType<typeof createChain>;
+  let usersChain: ReturnType<typeof createChain>;
   let defaultChain: ReturnType<typeof createChain>;
 
   const mockSupabaseClient = { from: jest.fn() };
@@ -64,6 +68,7 @@ describe('BlockchainIndexerProcessor', () => {
   const mockConfig: Record<string, string> = {
     CREDIT_LINE_CONTRACT_ID: 'C_LOAN_CONTRACT_FAKE',
     REPUTATION_CONTRACT_ID: 'C_REPUTATION_FAKE',
+    LIQUIDITY_POOL_CONTRACT_ID: 'C_LIQUIDITY_FAKE',
   };
 
   /** Resets all per-table chains and wires `from()` to dispatch by name. */
@@ -73,6 +78,7 @@ describe('BlockchainIndexerProcessor', () => {
     paymentChain = createChain();
     reputationHistoryChain = createChain();
     reputationCacheChain = createChain();
+    usersChain = createChain();
     defaultChain = createChain();
 
     mockSupabaseClient.from.mockImplementation((table: string) => {
@@ -87,6 +93,8 @@ describe('BlockchainIndexerProcessor', () => {
           return reputationHistoryChain;
         case 'reputation_cache':
           return reputationCacheChain;
+        case 'users':
+          return usersChain;
         default:
           return defaultChain;
       }
@@ -181,7 +189,7 @@ describe('BlockchainIndexerProcessor', () => {
 
       await processor.process({} as any);
 
-      expect(mockServer.getEvents).toHaveBeenCalledTimes(2);
+      expect(mockServer.getEvents).toHaveBeenCalledTimes(3);
     });
 
     it('should continue indexing reputation even if loan contract fails', async () => {
@@ -191,7 +199,7 @@ describe('BlockchainIndexerProcessor', () => {
       });
       mockServer.getEvents
         .mockRejectedValueOnce(new Error('Network error'))
-        .mockResolvedValueOnce({ events: [], latestLedger: 100 });
+        .mockResolvedValue({ events: [], latestLedger: 100 });
 
       await expect(processor.process({} as any)).resolves.not.toThrow();
     });
@@ -431,6 +439,115 @@ describe('BlockchainIndexerProcessor', () => {
       );
     });
   });
+
+  // =========================================================================
+  // LIQUIDITY_DEPOSITED persistence & auto-upgrade
+  // =========================================================================
+
+  describe('LIQUIDITY_DEPOSITED event', () => {
+    function setupLiquidityEvent(parsedEvent: any) {
+      cursorChain.single.mockResolvedValue({
+        data: null,
+        error: { code: 'PGRST116' },
+      });
+
+      const fakeEvent = {
+        id: parsedEvent.eventId,
+        type: 'contract',
+        ledger: parsedEvent.ledgerSequence,
+        ledgerClosedAt: '',
+        pagingToken: '',
+        inSuccessfulContractCall: true,
+        topic: [],
+        value: {} as any,
+      };
+
+      mockServer.getEvents
+        .mockResolvedValueOnce({ events: [], latestLedger: 100 })
+        .mockResolvedValueOnce({ events: [], latestLedger: 100 })
+        .mockResolvedValueOnce({ events: [fakeEvent], latestLedger: parsedEvent.ledgerSequence });
+
+      jest.spyOn(eventParser, 'parseEvent').mockReturnValue(parsedEvent);
+    }
+
+    it('should auto-upgrade user role from borrower to lp_provider on confirmed deposit', async () => {
+      const wallet = 'GBORROWER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+      setupLiquidityEvent({
+        eventId: '500-0-0',
+        txHash: '500-0-0',
+        ledgerSequence: 500,
+        type: LiquidityEventType.LIQUIDITY_DEPOSITED,
+        payload: {
+          providerWallet: wallet,
+          amount: 500,
+          shares: 500,
+        } as LiquidityDepositedPayload,
+      });
+
+      usersChain.maybeSingle.mockResolvedValue({
+        data: { id: 'user-borrower-uuid', role: 'borrower' },
+        error: null,
+      });
+      usersChain.eq.mockReturnThis();
+
+      await processor.process({} as any);
+
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('users');
+      expect(usersChain.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'lp_provider',
+        }),
+      );
+      expect(usersChain.eq).toHaveBeenCalledWith('id', 'user-borrower-uuid');
+    });
+
+    it('should not change role if user is already lp_provider, admin, or merchant', async () => {
+      const wallet = 'GLPPROVIDER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ23456';
+      setupLiquidityEvent({
+        eventId: '500-0-1',
+        txHash: '500-0-1',
+        ledgerSequence: 500,
+        type: LiquidityEventType.LIQUIDITY_DEPOSITED,
+        payload: {
+          providerWallet: wallet,
+          amount: 1000,
+          shares: 1000,
+        } as LiquidityDepositedPayload,
+      });
+
+      usersChain.maybeSingle.mockResolvedValue({
+        data: { id: 'user-lp-uuid', role: 'lp_provider' },
+        error: null,
+      });
+
+      await processor.process({} as any);
+
+      expect(usersChain.update).not.toHaveBeenCalled();
+    });
+
+    it('should handle missing user record gracefully without throwing', async () => {
+      const wallet = 'GUNREGISTERED1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ2345';
+      setupLiquidityEvent({
+        eventId: '500-0-2',
+        txHash: '500-0-2',
+        ledgerSequence: 500,
+        type: LiquidityEventType.LIQUIDITY_DEPOSITED,
+        payload: {
+          providerWallet: wallet,
+          amount: 200,
+          shares: 200,
+        } as LiquidityDepositedPayload,
+      });
+
+      usersChain.maybeSingle.mockResolvedValue({
+        data: null,
+        error: null,
+      });
+
+      await expect(processor.process({} as any)).resolves.not.toThrow();
+      expect(usersChain.update).not.toHaveBeenCalled();
+    });
+  });
 });
 
 // ===========================================================================
@@ -467,9 +584,6 @@ describe('EventParserService', () => {
   });
 
   it('should return null for unrecognised event types', () => {
-    // Spy on the private scValToString via parseEvent's path.
-    // We use a topic array with a value that scValToNative will fail to decode,
-    // causing the helper to return '' which is an "unrecognised" type.
     const result = parser.parseEvent({
       id: '700-0-0',
       type: 'contract' as any,
@@ -481,7 +595,6 @@ describe('EventParserService', () => {
       value: {} as any,
     } as any);
 
-    // Will return null because '' or invalid string doesn't match any known event
     expect(result).toBeNull();
   });
 });

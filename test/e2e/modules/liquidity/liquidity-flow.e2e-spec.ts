@@ -84,6 +84,15 @@ describe('Liquidity Operations Flow (e2e)', () => {
   }
 
   function createSupabasePositionsQuery() {
+    const singleResult = () => ({
+      data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
+      error: state.totalInvested > 0 ? null : { message: 'not found' },
+    });
+    const maybeSingleResult = () => ({
+      data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
+      error: null,
+    });
+
     return {
       select: jest.fn((columns?: string, options?: { count?: string; head?: boolean }) => {
         if (options?.head) {
@@ -93,20 +102,16 @@ describe('Liquidity Operations Flow (e2e)', () => {
         if (columns === 'deposited_amount') {
           return {
             eq: jest.fn().mockReturnThis(),
-            single: jest.fn().mockResolvedValue({
-              data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
-              error: state.totalInvested > 0 ? null : { message: 'not found' },
-            }),
+            single: jest.fn().mockResolvedValue(singleResult()),
+            maybeSingle: jest.fn().mockResolvedValue(maybeSingleResult()),
           };
         }
 
         return Promise.resolve({ data: [], error: null });
       }),
       eq: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({
-        data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
-        error: state.totalInvested > 0 ? null : { message: 'not found' },
-      }),
+      single: jest.fn().mockResolvedValue(singleResult()),
+      maybeSingle: jest.fn().mockResolvedValue(maybeSingleResult()),
     };
   }
 

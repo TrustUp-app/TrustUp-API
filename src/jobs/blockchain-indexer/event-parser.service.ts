@@ -4,10 +4,12 @@ import {
   ParsedContractEvent,
   LoanEventType,
   ReputationEventType,
+  LiquidityEventType,
   LoanCreatedPayload,
   LoanRepaidPayload,
   LoanDefaultedPayload,
   ScoreChangedPayload,
+  LiquidityDepositedPayload,
 } from './interfaces';
 
 /**
@@ -85,6 +87,18 @@ export class EventParserService {
             ledgerSequence,
             type: eventName as ReputationEventType,
             payload: this.parseScoreChanged(rawEvent),
+          };
+
+        case LiquidityEventType.LIQUIDITY_DEPOSITED:
+        case 'deposit':
+        case 'DEPOSIT':
+        case 'LiquidityDeposited':
+          return {
+            eventId,
+            txHash,
+            ledgerSequence,
+            type: LiquidityEventType.LIQUIDITY_DEPOSITED,
+            payload: this.parseLiquidityDeposited(rawEvent),
           };
 
         default:
@@ -174,6 +188,49 @@ export class EventParserService {
       oldScore: Number(valueMap.old_score ?? 0),
       newScore: Number(valueMap.new_score ?? 0),
       reason: String(valueMap.reason ?? 'unknown'),
+    };
+  }
+
+  /**
+   * LIQUIDITY_DEPOSITED event layout:
+   *   topic[0] = Symbol("LIQUIDITY_DEPOSITED" | "deposit" | "DEPOSIT")
+   *   topic[1] = Address (provider_wallet)
+   *   value    = Map { amount: i128, shares?: i128 } or i128
+   */
+  private parseLiquidityDeposited(
+    raw: StellarSdk.SorobanRpc.Api.EventResponse,
+  ): LiquidityDepositedPayload {
+    const providerWallet = this.scValToString(raw.topic[1]);
+    const valueMap = this.scValToNativeMap(raw.value);
+
+    let amount = 0;
+    let shares = 0;
+
+    if (valueMap.amount !== undefined) {
+      amount = this.stroopsToDecimal(valueMap.amount);
+    } else if (raw.value) {
+      try {
+        const native = StellarSdk.scValToNative(raw.value);
+        if (
+          typeof native === 'bigint' ||
+          typeof native === 'number' ||
+          typeof native === 'string'
+        ) {
+          amount = this.stroopsToDecimal(native);
+        }
+      } catch {
+        // ignore fallback
+      }
+    }
+
+    if (valueMap.shares !== undefined) {
+      shares = this.stroopsToDecimal(valueMap.shares);
+    }
+
+    return {
+      providerWallet,
+      amount,
+      shares,
     };
   }
 

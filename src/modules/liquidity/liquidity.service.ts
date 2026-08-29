@@ -9,8 +9,6 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { LiquidityRepository } from '../../database/repositories/liquidity.repository';
-import { UsersRepository } from '../../database/repositories/users.repository';
-import { UserRole } from '../../common/enums/user-role.enum';
 import { LiquidityContractClient } from '../../blockchain/contracts/liquidity-contract.client';
 import { InvestmentSummaryResponseDto } from './dto/investment-summary-response.dto';
 import { LiquidityWithdrawRequestDto } from './dto/liquidity-withdraw-request.dto';
@@ -32,7 +30,6 @@ export class LiquidityService {
   constructor(
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly liquidityRepository: LiquidityRepository,
-    private readonly usersRepository: UsersRepository,
     private readonly liquidityClient: LiquidityContractClient,
   ) {}
 
@@ -142,18 +139,6 @@ export class LiquidityService {
       poolStats.totalShares > 0n
         ? this.roundTo7(Number(poolStats.sharePrice) / Number(SHARE_PRICE_BPS))
         : 1;
-
-    // Self-service onboarding: auto-upgrade borrower to lp_provider on deposit
-    try {
-      const user = await this.usersRepository.findByWallet(wallet);
-      if (user && user.role === UserRole.BORROWER) {
-        await this.usersRepository.updateRole(user.id, UserRole.LP_PROVIDER);
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Failed to auto-upgrade user role to lp_provider: ${(err as Error).message}`,
-      );
-    }
 
     return {
       unsignedXdr,

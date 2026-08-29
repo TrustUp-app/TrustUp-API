@@ -10,10 +10,12 @@ import {
   ParsedContractEvent,
   LoanEventType,
   ReputationEventType,
+  LiquidityEventType,
   LoanCreatedPayload,
   LoanRepaidPayload,
   LoanDefaultedPayload,
   ScoreChangedPayload,
+  LiquidityDepositedPayload,
 } from './interfaces';
 
 /**
@@ -31,6 +33,7 @@ export class BlockchainIndexerProcessor extends WorkerHost {
 
   private readonly loanContractId: string;
   private readonly reputationContractId: string;
+  private readonly liquidityContractId: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -41,6 +44,10 @@ export class BlockchainIndexerProcessor extends WorkerHost {
     super();
     this.loanContractId = this.configService.get<string>('CREDIT_LINE_CONTRACT_ID') || '';
     this.reputationContractId = this.configService.get<string>('REPUTATION_CONTRACT_ID') || '';
+    this.liquidityContractId =
+      this.configService.get<string>('LIQUIDITY_POOL_CONTRACT_ID') ||
+      this.configService.get<string>('LIQUIDITY_CONTRACT_ID') ||
+      '';
   }
 
   // -------------------------------------------------------------------------
@@ -81,6 +88,20 @@ export class BlockchainIndexerProcessor extends WorkerHost {
           stack: error.stack,
         },
         'Failed to index reputation contract events — will retry next cycle',
+      );
+    }
+
+    try {
+      await this.indexContract(this.liquidityContractId, 'liquidity');
+    } catch (error) {
+      this.logger.error(
+        {
+          context: 'BlockchainIndexerProcessor',
+          action: 'indexLiquidityContract',
+          error: error.message,
+          stack: error.stack,
+        },
+        'Failed to index liquidity contract events — will retry next cycle',
       );
     }
 
@@ -236,6 +257,62 @@ export class BlockchainIndexerProcessor extends WorkerHost {
       case ReputationEventType.SCORE_UPDATED:
         await this.persistScoreChanged(event as ParsedContractEvent<ScoreChangedPayload>);
         break;
+      case LiquidityEventType.LIQUIDITY_DEPOSITED:
+        await this.persistLiquidityDeposited(
+          event as ParsedContractEvent<LiquidityDepositedPayload>,
+        );
+        break;
+    }
+  }
+
+  /**
+   * Upgrades user role from borrower to lp_provider upon confirmed on-chain deposit.
+   */
+  private async persistLiquidityDeposited(
+    event: ParsedContractEvent<LiquidityDepositedPayload>,
+  ): Promise<void> {
+    const { payload } = event;
+    const db = this.supabaseService.getServiceRoleClient();
+
+    if (!payload.providerWallet) {
+      return;
+    }
+
+    const { data: user, error: userError } = await db
+      .from('users')
+      .select('id, role')
+      .eq('wallet_address', payload.providerWallet)
+      .maybeSingle();
+
+    if (!userError && user && user.role === 'borrower') {
+      const { error: updateError } = await db
+        .from('users')
+        .update({
+          role: 'lp_provider',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        this.logger.warn(
+          {
+            context: 'BlockchainIndexerProcessor',
+            action: 'autoUpgradeLpRole',
+            wallet: payload.providerWallet,
+            error: updateError.message,
+          },
+          'Failed to auto-upgrade user role to lp_provider',
+        );
+      } else {
+        this.logger.log(
+          {
+            context: 'BlockchainIndexerProcessor',
+            action: 'autoUpgradeLpRole',
+            wallet: payload.providerWallet,
+          },
+          'Auto-upgraded user role to lp_provider upon on-chain deposit confirmation',
+        );
+      }
     }
   }
 

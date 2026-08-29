@@ -6,11 +6,8 @@ import { LiquidityContractClient } from '../../../../src/blockchain/contracts/li
 import { SupabaseService } from '../../../../src/database/supabase.client';
 import { LiquidityRepository } from '../../../../src/database/repositories/liquidity.repository';
 
-import { UsersRepository } from '../../../../src/database/repositories/users.repository';
-
 describe('LiquidityService', () => {
   let service: LiquidityService;
-  let mockUsersRepository: { findByWallet: jest.Mock; updateRole: jest.Mock };
 
   const validWallet = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
   const STROOPS = 10_000_000n;
@@ -44,18 +41,12 @@ describe('LiquidityService', () => {
   };
 
   beforeEach(async () => {
-    mockUsersRepository = {
-      findByWallet: jest.fn().mockResolvedValue(null),
-      updateRole: jest.fn().mockResolvedValue({}),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LiquidityService,
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: SupabaseService, useValue: mockSupabaseService },
         { provide: LiquidityContractClient, useValue: mockLiquidityContractClient },
-        { provide: UsersRepository, useValue: mockUsersRepository },
         LiquidityRepository,
       ],
     }).compile();
@@ -127,29 +118,6 @@ describe('LiquidityService', () => {
         validWallet,
         500n * STROOPS,
       );
-    });
-
-    it('should auto-upgrade borrower role to lp_provider on deposit', async () => {
-      mockLiquidityContractClient.getPoolStats.mockResolvedValue({
-        totalLiquidity: 100000n * STROOPS,
-        lockedLiquidity: 90000n * STROOPS,
-        availableLiquidity: 10000n * STROOPS,
-        totalShares: 95000n * STROOPS,
-        sharePrice: 10000n,
-        withdrawalFeeBps: 0n,
-      });
-      mockLiquidityContractClient.calculateDeposit.mockResolvedValue(100n * STROOPS);
-      mockLiquidityContractClient.buildDepositTx.mockResolvedValue('AAAAAgDEPOSIT...');
-
-      mockUsersRepository.findByWallet.mockResolvedValue({
-        id: 'user-1',
-        wallet_address: validWallet,
-        role: 'borrower',
-      });
-
-      await service.depositLiquidity(validWallet, { amount: 100 });
-
-      expect(mockUsersRepository.updateRole).toHaveBeenCalledWith('user-1', 'lp_provider');
     });
 
     it('should default share price to 1 for the first deposit', async () => {
