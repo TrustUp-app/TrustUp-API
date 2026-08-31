@@ -42,4 +42,3 @@ export const createTestUserData = (overrides?: any) => ({
 export const createTestWallet = () => {
   return createTestKeypair().publicKey();
 };
-

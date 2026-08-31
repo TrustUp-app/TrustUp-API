@@ -19,7 +19,9 @@ describe('accrueInterest', () => {
 
 describe('daysBetweenUtc', () => {
   it('floors full UTC days', () => {
-    expect(daysBetweenUtc('2026-08-01T00:00:00.000Z', new Date('2026-08-03T12:00:00.000Z'))).toBe(2);
+    expect(daysBetweenUtc('2026-08-01T00:00:00.000Z', new Date('2026-08-03T12:00:00.000Z'))).toBe(
+      2,
+    );
   });
 });
 

@@ -87,7 +87,9 @@ describe('AuthController', () => {
       const result = await controller.register(mockReq, registerDto);
 
       expect(result).toEqual(mockResponse);
-      expect(result.user.avatarUrl).toBe('https://supabase.co/storage/v1/object/public/avatars/avatar.png');
+      expect(result.user.avatarUrl).toBe(
+        'https://supabase.co/storage/v1/object/public/avatars/avatar.png',
+      );
       expect(authService.register).toHaveBeenCalledWith(registerDto, {
         buffer: imageBuffer,
         mimetype: 'image/png',
@@ -132,9 +134,7 @@ describe('AuthController', () => {
         }),
       } as any;
 
-      await expect(controller.register(mockReq, registerDto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(controller.register(mockReq, registerDto)).rejects.toThrow(BadRequestException);
 
       try {
         await controller.register(mockReq, registerDto);

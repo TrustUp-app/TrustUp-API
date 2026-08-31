@@ -18,8 +18,7 @@ export class SorobanService {
       'https://soroban-testnet.stellar.org';
 
     this.networkPassphrase =
-      this.configService.get<string>('STELLAR_NETWORK_PASSPHRASE') ||
-      StellarSdk.Networks.TESTNET;
+      this.configService.get<string>('STELLAR_NETWORK_PASSPHRASE') || StellarSdk.Networks.TESTNET;
 
     this.server = new StellarSdk.SorobanRpc.Server(rpcUrl);
     this.logger.log(`Soroban RPC client initialized: ${rpcUrl}`);
@@ -72,7 +71,8 @@ export class SorobanService {
       throw new Error(`Soroban simulation failed: ${errorMsg}`);
     }
 
-    const successResult = simulation as StellarSdk.SorobanRpc.Api.SimulateTransactionSuccessResponse;
+    const successResult =
+      simulation as StellarSdk.SorobanRpc.Api.SimulateTransactionSuccessResponse;
     if (!successResult.result) {
       throw new Error('Soroban simulation returned no result');
     }

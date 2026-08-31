@@ -41,8 +41,7 @@ export class StellarService {
       'https://horizon-testnet.stellar.org';
 
     this.networkPassphrase =
-      this.configService.get<string>('STELLAR_NETWORK_PASSPHRASE') ||
-      StellarSdk.Networks.TESTNET;
+      this.configService.get<string>('STELLAR_NETWORK_PASSPHRASE') || StellarSdk.Networks.TESTNET;
 
     this.horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
     this.logger.log(`Horizon client initialized: ${horizonUrl}`);

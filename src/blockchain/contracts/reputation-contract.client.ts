@@ -37,10 +37,9 @@ export class ReputationContractClient {
       throw new Error('REPUTATION_CONTRACT_ID is not configured');
     }
 
-    const addressScVal = StellarSdk.nativeToScVal(
-      StellarSdk.Address.fromString(wallet),
-      { type: 'address' },
-    );
+    const addressScVal = StellarSdk.nativeToScVal(StellarSdk.Address.fromString(wallet), {
+      type: 'address',
+    });
 
     try {
       const resultScVal = await this.sorobanService.simulateContractCall(
@@ -58,10 +57,7 @@ export class ReputationContractClient {
       return Number(score);
     } catch (error) {
       // Contract returns an error when the wallet has no entry — treat as null
-      if (
-        error.message?.includes('HostError') ||
-        error.message?.includes('Status(ContractError')
-      ) {
+      if (error.message?.includes('HostError') || error.message?.includes('Status(ContractError')) {
         this.logger.debug(`No on-chain score for wallet ${wallet.slice(0, 8)}...`);
         return null;
       }

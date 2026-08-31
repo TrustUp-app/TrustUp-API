@@ -10,10 +10,12 @@ import {
   ParsedContractEvent,
   LoanEventType,
   ReputationEventType,
+  LiquidityEventType,
   LoanCreatedPayload,
   LoanRepaidPayload,
   LoanDefaultedPayload,
   ScoreChangedPayload,
+  LiquidityDepositedPayload,
 } from './interfaces';
 
 /**
@@ -31,6 +33,7 @@ export class BlockchainIndexerProcessor extends WorkerHost {
 
   private readonly loanContractId: string;
   private readonly reputationContractId: string;
+  private readonly liquidityContractId: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -39,10 +42,12 @@ export class BlockchainIndexerProcessor extends WorkerHost {
     private readonly eventParser: EventParserService,
   ) {
     super();
-    this.loanContractId =
-      this.configService.get<string>('CREDIT_LINE_CONTRACT_ID') || '';
-    this.reputationContractId =
-      this.configService.get<string>('REPUTATION_CONTRACT_ID') || '';
+    this.loanContractId = this.configService.get<string>('CREDIT_LINE_CONTRACT_ID') || '';
+    this.reputationContractId = this.configService.get<string>('REPUTATION_CONTRACT_ID') || '';
+    this.liquidityContractId =
+      this.configService.get<string>('LIQUIDITY_POOL_CONTRACT_ID') ||
+      this.configService.get<string>('LIQUIDITY_CONTRACT_ID') ||
+      '';
   }
 
   // -------------------------------------------------------------------------
@@ -50,64 +55,88 @@ export class BlockchainIndexerProcessor extends WorkerHost {
   // -------------------------------------------------------------------------
 
   async process(_job: Job): Promise<void> {
-    this.logger.log({
-      context: 'BlockchainIndexerProcessor',
-      action: 'process',
-    }, 'Blockchain indexer job started');
+    this.logger.log(
+      {
+        context: 'BlockchainIndexerProcessor',
+        action: 'process',
+      },
+      'Blockchain indexer job started',
+    );
 
     try {
       await this.indexContract(this.loanContractId, 'loan');
     } catch (error) {
-      this.logger.error({
-        context: 'BlockchainIndexerProcessor',
-        action: 'indexLoanContract',
-        error: error.message,
-        stack: error.stack,
-      }, 'Failed to index loan contract events — will retry next cycle');
+      this.logger.error(
+        {
+          context: 'BlockchainIndexerProcessor',
+          action: 'indexLoanContract',
+          error: error.message,
+          stack: error.stack,
+        },
+        'Failed to index loan contract events — will retry next cycle',
+      );
     }
 
     try {
       await this.indexContract(this.reputationContractId, 'reputation');
     } catch (error) {
-      this.logger.error({
-        context: 'BlockchainIndexerProcessor',
-        action: 'indexReputationContract',
-        error: error.message,
-        stack: error.stack,
-      }, 'Failed to index reputation contract events — will retry next cycle');
+      this.logger.error(
+        {
+          context: 'BlockchainIndexerProcessor',
+          action: 'indexReputationContract',
+          error: error.message,
+          stack: error.stack,
+        },
+        'Failed to index reputation contract events — will retry next cycle',
+      );
     }
 
-    this.logger.log({
-      context: 'BlockchainIndexerProcessor',
-      action: 'process',
-    }, 'Blockchain indexer job completed');
+    try {
+      await this.indexContract(this.liquidityContractId, 'liquidity');
+    } catch (error) {
+      this.logger.error(
+        {
+          context: 'BlockchainIndexerProcessor',
+          action: 'indexLiquidityContract',
+          error: error.message,
+          stack: error.stack,
+        },
+        'Failed to index liquidity contract events — will retry next cycle',
+      );
+    }
+
+    this.logger.log(
+      {
+        context: 'BlockchainIndexerProcessor',
+        action: 'process',
+      },
+      'Blockchain indexer job completed',
+    );
   }
 
   // -------------------------------------------------------------------------
   // Contract indexing
   // -------------------------------------------------------------------------
 
-  private async indexContract(
-    contractId: string,
-    label: string,
-  ): Promise<void> {
+  private async indexContract(contractId: string, label: string): Promise<void> {
     if (!contractId) {
-      this.logger.warn(
-        `Skipping ${label} contract indexing — contract ID not configured`,
-      );
+      this.logger.warn(`Skipping ${label} contract indexing — contract ID not configured`);
       return;
     }
 
     const cursor = await this.getCursor(contractId);
     const startLedger = cursor + 1;
 
-    this.logger.debug({
-      context: 'BlockchainIndexerProcessor',
-      action: 'indexContract',
-      contractId: contractId.slice(0, 8) + '...',
-      label,
-      startLedger,
-    }, `Polling for ${label} events from ledger ${startLedger}`);
+    this.logger.debug(
+      {
+        context: 'BlockchainIndexerProcessor',
+        action: 'indexContract',
+        contractId: contractId.slice(0, 8) + '...',
+        label,
+        startLedger,
+      },
+      `Polling for ${label} events from ledger ${startLedger}`,
+    );
 
     const rawEvents = await this.fetchEvents(contractId, startLedger);
 
@@ -116,12 +145,15 @@ export class BlockchainIndexerProcessor extends WorkerHost {
       return;
     }
 
-    this.logger.log({
-      context: 'BlockchainIndexerProcessor',
-      action: 'indexContract',
-      label,
-      eventCount: rawEvents.length,
-    }, `Found ${rawEvents.length} new ${label} event(s)`);
+    this.logger.log(
+      {
+        context: 'BlockchainIndexerProcessor',
+        action: 'indexContract',
+        label,
+        eventCount: rawEvents.length,
+      },
+      `Found ${rawEvents.length} new ${label} event(s)`,
+    );
 
     let maxLedger = cursor;
     let successCount = 0;
@@ -139,23 +171,29 @@ export class BlockchainIndexerProcessor extends WorkerHost {
           maxLedger = parsed.ledgerSequence;
         }
 
-        this.logger.log({
-          context: 'BlockchainIndexerProcessor',
-          action: 'eventIndexed',
-          eventType: parsed.type,
-          eventId: parsed.eventId,
-          txHash: parsed.txHash,
-          ledger: parsed.ledgerSequence,
-          timestamp: new Date().toISOString(),
-        }, `Indexed ${parsed.type} event`);
+        this.logger.log(
+          {
+            context: 'BlockchainIndexerProcessor',
+            action: 'eventIndexed',
+            eventType: parsed.type,
+            eventId: parsed.eventId,
+            txHash: parsed.txHash,
+            ledger: parsed.ledgerSequence,
+            timestamp: new Date().toISOString(),
+          },
+          `Indexed ${parsed.type} event`,
+        );
       } catch (error) {
         errorCount++;
-        this.logger.error({
-          context: 'BlockchainIndexerProcessor',
-          action: 'persistEvent',
-          error: error.message,
-          eventId: rawEvent?.id,
-        }, 'Failed to persist event — skipping');
+        this.logger.error(
+          {
+            context: 'BlockchainIndexerProcessor',
+            action: 'persistEvent',
+            error: error.message,
+            eventId: rawEvent?.id,
+          },
+          'Failed to persist event — skipping',
+        );
       }
     }
 
@@ -164,13 +202,16 @@ export class BlockchainIndexerProcessor extends WorkerHost {
       await this.updateCursor(contractId, maxLedger);
     }
 
-    this.logger.log({
-      context: 'BlockchainIndexerProcessor',
-      action: 'indexContractComplete',
-      label,
-      successCount,
-      errorCount,
-    }, `Finished indexing ${label}: ${successCount} ok, ${errorCount} failed`);
+    this.logger.log(
+      {
+        context: 'BlockchainIndexerProcessor',
+        action: 'indexContractComplete',
+        label,
+        successCount,
+        errorCount,
+      },
+      `Finished indexing ${label}: ${successCount} ok, ${errorCount} failed`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -216,6 +257,62 @@ export class BlockchainIndexerProcessor extends WorkerHost {
       case ReputationEventType.SCORE_UPDATED:
         await this.persistScoreChanged(event as ParsedContractEvent<ScoreChangedPayload>);
         break;
+      case LiquidityEventType.LIQUIDITY_DEPOSITED:
+        await this.persistLiquidityDeposited(
+          event as ParsedContractEvent<LiquidityDepositedPayload>,
+        );
+        break;
+    }
+  }
+
+  /**
+   * Upgrades user role from borrower to lp_provider upon confirmed on-chain deposit.
+   */
+  private async persistLiquidityDeposited(
+    event: ParsedContractEvent<LiquidityDepositedPayload>,
+  ): Promise<void> {
+    const { payload } = event;
+    const db = this.supabaseService.getServiceRoleClient();
+
+    if (!payload.providerWallet) {
+      return;
+    }
+
+    const { data: user, error: userError } = await db
+      .from('users')
+      .select('id, role')
+      .eq('wallet_address', payload.providerWallet)
+      .maybeSingle();
+
+    if (!userError && user && user.role === 'borrower') {
+      const { error: updateError } = await db
+        .from('users')
+        .update({
+          role: 'lp_provider',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        this.logger.warn(
+          {
+            context: 'BlockchainIndexerProcessor',
+            action: 'autoUpgradeLpRole',
+            wallet: payload.providerWallet,
+            error: updateError.message,
+          },
+          'Failed to auto-upgrade user role to lp_provider',
+        );
+      } else {
+        this.logger.log(
+          {
+            context: 'BlockchainIndexerProcessor',
+            action: 'autoUpgradeLpRole',
+            wallet: payload.providerWallet,
+          },
+          'Auto-upgraded user role to lp_provider upon on-chain deposit confirmation',
+        );
+      }
     }
   }
 
@@ -223,9 +320,7 @@ export class BlockchainIndexerProcessor extends WorkerHost {
    * Inserts a new loan record into `loan_index`.
    * Idempotent: `event_id` has a unique constraint — conflicts are ignored.
    */
-  private async persistLoanCreated(
-    event: ParsedContractEvent<LoanCreatedPayload>,
-  ): Promise<void> {
+  private async persistLoanCreated(event: ParsedContractEvent<LoanCreatedPayload>): Promise<void> {
     const { payload } = event;
     const db = this.supabaseService.getServiceRoleClient();
 
@@ -257,9 +352,7 @@ export class BlockchainIndexerProcessor extends WorkerHost {
    * Inserts a payment record and updates the loan's remaining balance.
    * Idempotent: `(tx_hash, loan_id)` has a unique constraint.
    */
-  private async persistLoanRepaid(
-    event: ParsedContractEvent<LoanRepaidPayload>,
-  ): Promise<void> {
+  private async persistLoanRepaid(event: ParsedContractEvent<LoanRepaidPayload>): Promise<void> {
     const { payload } = event;
     const db = this.supabaseService.getServiceRoleClient();
 
@@ -295,10 +388,7 @@ export class BlockchainIndexerProcessor extends WorkerHost {
       return;
     }
 
-    const totalPaid = (payments ?? []).reduce(
-      (sum, p) => sum + Number(p.amount),
-      0,
-    );
+    const totalPaid = (payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
 
     // Fetch loan to determine if fully repaid
     const { data: loan } = await db
@@ -384,12 +474,15 @@ export class BlockchainIndexerProcessor extends WorkerHost {
 
     if (cacheError) {
       // Non-fatal: cache update failure should not block event processing
-      this.logger.warn({
-        context: 'BlockchainIndexerProcessor',
-        action: 'updateReputationCache',
-        error: cacheError.message,
-        wallet: payload.wallet,
-      }, 'Failed to update reputation cache — history was saved');
+      this.logger.warn(
+        {
+          context: 'BlockchainIndexerProcessor',
+          action: 'updateReputationCache',
+          error: cacheError.message,
+          wallet: payload.wallet,
+        },
+        'Failed to update reputation cache — history was saved',
+      );
     }
   }
 
@@ -433,13 +526,16 @@ export class BlockchainIndexerProcessor extends WorkerHost {
     );
 
     if (error) {
-      this.logger.error({
-        context: 'BlockchainIndexerProcessor',
-        action: 'updateCursor',
-        error: error.message,
-        contractId,
-        ledger,
-      }, 'Failed to update indexer cursor');
+      this.logger.error(
+        {
+          context: 'BlockchainIndexerProcessor',
+          action: 'updateCursor',
+          error: error.message,
+          contractId,
+          ledger,
+        },
+        'Failed to update indexer cursor',
+      );
     }
   }
 }

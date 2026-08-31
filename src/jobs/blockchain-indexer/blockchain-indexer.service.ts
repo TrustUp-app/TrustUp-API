@@ -34,9 +34,12 @@ export class BlockchainIndexerService implements OnModuleInit {
       },
     );
 
-    this.logger.log({
-      context: 'BlockchainIndexerService',
-      action: 'onModuleInit',
-    }, 'Blockchain indexer job scheduled — runs every 30 seconds');
+    this.logger.log(
+      {
+        context: 'BlockchainIndexerService',
+        action: 'onModuleInit',
+      },
+      'Blockchain indexer job scheduled — runs every 30 seconds',
+    );
   }
 }

@@ -18,12 +18,14 @@ describe('RolesGuard', () => {
     ({
       switchToHttp: () => ({
         getRequest: () => ({
-          user: role ? { wallet: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW', role } : undefined,
+          user: role
+            ? { wallet: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW', role }
+            : undefined,
         }),
       }),
       getHandler: () => jest.fn(),
       getClass: () => jest.fn(),
-    } as unknown as ExecutionContext);
+    }) as unknown as ExecutionContext;
 
   // ---------------------------------------------------------------------------
   // No @Roles() decorator — should allow any authenticated user
@@ -50,17 +52,23 @@ describe('RolesGuard', () => {
     });
 
     it('should allow access when user has one of multiple allowed roles', () => {
-      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.BORROWER, UserRole.ADMIN]);
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue([UserRole.BORROWER, UserRole.ADMIN]);
       expect(guard.canActivate(mockContext(UserRole.BORROWER))).toBe(true);
     });
 
     it('should allow admin access to borrower+admin endpoints', () => {
-      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.BORROWER, UserRole.ADMIN]);
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue([UserRole.BORROWER, UserRole.ADMIN]);
       expect(guard.canActivate(mockContext(UserRole.ADMIN))).toBe(true);
     });
 
     it('should allow lp_provider access to LP endpoints', () => {
-      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.LP_PROVIDER, UserRole.ADMIN]);
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue([UserRole.LP_PROVIDER, UserRole.ADMIN]);
       expect(guard.canActivate(mockContext(UserRole.LP_PROVIDER))).toBe(true);
     });
   });
@@ -81,7 +89,9 @@ describe('RolesGuard', () => {
     });
 
     it('should throw ForbiddenException when borrower accesses LP-only endpoint', () => {
-      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.LP_PROVIDER, UserRole.ADMIN]);
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue([UserRole.LP_PROVIDER, UserRole.ADMIN]);
 
       expect(() => guard.canActivate(mockContext(UserRole.BORROWER))).toThrow(ForbiddenException);
     });

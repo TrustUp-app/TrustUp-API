@@ -10,7 +10,15 @@ describe('LoanDefaultDetectorProcessor', () => {
     runsChain.insert.mockResolvedValue({ error: null });
     const loansChain = createSupabaseChainMock();
     loansChain.lt.mockResolvedValue({
-      data: [{ id: '1', loan_id: 'L1', user_wallet: 'G1', status: 'active', next_payment_due: '2026-01-01' }],
+      data: [
+        {
+          id: '1',
+          loan_id: 'L1',
+          user_wallet: 'G1',
+          status: 'active',
+          next_payment_due: '2026-01-01',
+        },
+      ],
       error: null,
     });
     loansChain.update.mockReturnValue({
@@ -59,8 +67,20 @@ describe('LoanDefaultDetectorProcessor', () => {
     const loansChain = createSupabaseChainMock();
     loansChain.lt.mockResolvedValue({
       data: [
-        { id: '1', loan_id: 'L1', user_wallet: 'G1', status: 'active', next_payment_due: '2026-01-01' },
-        { id: '2', loan_id: 'L2', user_wallet: 'G2', status: 'active', next_payment_due: '2026-01-01' },
+        {
+          id: '1',
+          loan_id: 'L1',
+          user_wallet: 'G1',
+          status: 'active',
+          next_payment_due: '2026-01-01',
+        },
+        {
+          id: '2',
+          loan_id: 'L2',
+          user_wallet: 'G2',
+          status: 'active',
+          next_payment_due: '2026-01-01',
+        },
       ],
       error: null,
     });

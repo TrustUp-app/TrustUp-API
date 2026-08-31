@@ -62,10 +62,7 @@ export class LoansController {
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
   @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   @ApiResponse({ status: 404, description: 'Merchant not found' })
-  async getLoanQuote(
-    @CurrentUser() user: { wallet: string },
-    @Body() dto: LoanQuoteRequestDto,
-  ) {
+  async getLoanQuote(@CurrentUser() user: { wallet: string }, @Body() dto: LoanQuoteRequestDto) {
     const data = await this.loansService.calculateLoanQuote(user.wallet, dto);
     return { success: true, data, message: 'Loan quote calculated successfully' };
   }
@@ -102,10 +99,7 @@ export class LoansController {
   @ApiResponse({ status: 400, description: 'Invalid status or pagination parameters' })
   @ApiResponse({ status: 401, description: 'Unauthorized - missing or invalid JWT' })
   @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
-  async getMyLoans(
-    @CurrentUser() user: { wallet: string },
-    @Query() query: LoanListQueryDto,
-  ) {
+  async getMyLoans(@CurrentUser() user: { wallet: string }, @Query() query: LoanListQueryDto) {
     const data = await this.loansService.getMyLoans(user.wallet, query);
     return { success: true, ...data };
   }
@@ -132,7 +126,11 @@ export class LoansController {
   @Post('create')
   @HttpCode(HttpStatus.OK)
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID v4 key used to safely replay this request for 24 hours.',
+  })
   @ApiOperation({
     summary: 'Create BNPL loan',
     description:
@@ -163,7 +161,11 @@ export class LoansController {
   @Post(':loanId/pay')
   @HttpCode(HttpStatus.OK)
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID v4 key used to safely replay this request for 24 hours.',
+  })
   @ApiParam({
     name: 'loanId',
     description: 'UUID of the loan to repay',

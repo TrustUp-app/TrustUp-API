@@ -15,6 +15,14 @@ export enum ReputationEventType {
   SCORE_UPDATED = 'SCORE_UPDATED',
 }
 
+/**
+ * Parsed event types emitted by the on-chain Liquidity Pool contract.
+ */
+export enum LiquidityEventType {
+  LIQUIDITY_DEPOSITED = 'LIQUIDITY_DEPOSITED',
+  LIQUIDITY_WITHDRAWN = 'LIQUIDITY_WITHDRAWN',
+}
+
 // ---------------------------------------------------------------------------
 // Parsed event payloads
 // ---------------------------------------------------------------------------
@@ -45,6 +53,12 @@ export interface ScoreChangedPayload {
   reason: string;
 }
 
+export interface LiquidityDepositedPayload {
+  providerWallet: string;
+  amount: number;
+  shares: number;
+}
+
 // ---------------------------------------------------------------------------
 // Generic wrapper returned by the event parser
 // ---------------------------------------------------------------------------
@@ -57,7 +71,7 @@ export interface ParsedContractEvent<T = unknown> {
   /** Ledger sequence number */
   ledgerSequence: number;
   /** Event type */
-  type: LoanEventType | ReputationEventType;
+  type: LoanEventType | ReputationEventType | LiquidityEventType;
   /** Typed payload */
   payload: T;
 }

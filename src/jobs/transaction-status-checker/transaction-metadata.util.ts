@@ -60,8 +60,12 @@ export function parseTransactionMetadata(
   if (functionName === 'repay_loan') {
     const loanId = nativeArgs[1] as string;
     const rawAmount = nativeArgs[2];
-    const amount = typeof rawAmount === 'bigint' ? Number(rawAmount) / 10_000_000 :
-      typeof rawAmount === 'number' ? rawAmount / 10_000_000 : undefined;
+    const amount =
+      typeof rawAmount === 'bigint'
+        ? Number(rawAmount) / 10_000_000
+        : typeof rawAmount === 'number'
+          ? rawAmount / 10_000_000
+          : undefined;
 
     return { loanId, amount };
   }

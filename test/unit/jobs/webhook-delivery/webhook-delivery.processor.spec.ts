@@ -39,11 +39,10 @@ describe('WebhookDeliveryProcessor', () => {
 
   it('POSTs a signed payload and marks success on 2xx', async () => {
     const payload = { event: 'loan.status_changed', event_id: 'loan:pending:active' };
-    deliveriesChain.maybeSingle
-      .mockResolvedValueOnce({
-        data: { id: 'd1', status: 'pending', event: 'loan.status_changed', payload },
-        error: null,
-      });
+    deliveriesChain.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'd1', status: 'pending', event: 'loan.status_changed', payload },
+      error: null,
+    });
     endpointsChain.maybeSingle.mockResolvedValue({
       data: { id: 'e1', url: 'https://example.test/hook', secret: 's3cret', is_active: true },
       error: null,

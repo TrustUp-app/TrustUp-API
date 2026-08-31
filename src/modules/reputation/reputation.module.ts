@@ -10,24 +10,24 @@ import { SupabaseService } from '../../database/supabase.client';
 import { getJwtConfig } from '../../config/jwt.config';
 
 @Module({
-    imports: [
-        CacheModule.registerAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: async (configService: ConfigService) => ({
-                store: redisStore,
-                url: configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
-            }),
-        }),
-        PassportModule.register({ defaultStrategy: 'jwt' }),
-        JwtModule.registerAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: getJwtConfig,
-        }),
-    ],
-    providers: [ReputationService, SupabaseService],
-    controllers: [ReputationController],
-    exports: [ReputationService],
+  imports: [
+    CacheModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => ({
+        store: redisStore,
+        url: configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
+      }),
+    }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: getJwtConfig,
+    }),
+  ],
+  providers: [ReputationService, SupabaseService],
+  controllers: [ReputationController],
+  exports: [ReputationService],
 })
-export class ReputationModule { }
+export class ReputationModule {}

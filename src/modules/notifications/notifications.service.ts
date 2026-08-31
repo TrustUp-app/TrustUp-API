@@ -1,24 +1,17 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  ForbiddenException,
-} from "@nestjs/common";
-import { NotificationsRepository } from "../../database/repositories/notifications.repository";
-import { NotificationListQueryDto } from "./dto/notification-list-query.dto";
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotificationsRepository } from '../../database/repositories/notifications.repository';
+import { NotificationListQueryDto } from './dto/notification-list-query.dto';
 import {
   NotificationItemDto,
   NotificationListResponseDto,
-} from "./dto/notification-list-response.dto";
-import { MarkAsReadResponseDto } from "./dto/mark-as-read-response.dto";
+} from './dto/notification-list-response.dto';
+import { MarkAsReadResponseDto } from './dto/mark-as-read-response.dto';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(
-    private readonly notificationsRepository: NotificationsRepository,
-  ) {}
+  constructor(private readonly notificationsRepository: NotificationsRepository) {}
 
   async getNotifications(
     wallet: string,
@@ -38,7 +31,7 @@ export class NotificationsService {
 
     const data: NotificationItemDto[] = (notifications ?? []).map((n) => ({
       id: n.id,
-      type: n.type as NotificationItemDto["type"],
+      type: n.type as NotificationItemDto['type'],
       title: n.title,
       message: n.message,
       data: n.data ?? {},
@@ -58,24 +51,20 @@ export class NotificationsService {
     };
   }
 
-  async markAsRead(
-    wallet: string,
-    notificationId: string,
-  ): Promise<MarkAsReadResponseDto> {
-    const notification =
-      await this.notificationsRepository.findById(notificationId);
+  async markAsRead(wallet: string, notificationId: string): Promise<MarkAsReadResponseDto> {
+    const notification = await this.notificationsRepository.findById(notificationId);
 
     if (!notification) {
       throw new NotFoundException({
-        code: "NOTIFICATION_NOT_FOUND",
-        message: "Notification not found",
+        code: 'NOTIFICATION_NOT_FOUND',
+        message: 'Notification not found',
       });
     }
 
     if (notification.user_wallet !== wallet) {
       throw new ForbiddenException({
-        code: "NOTIFICATION_FORBIDDEN",
-        message: "You do not have permission to update this notification",
+        code: 'NOTIFICATION_FORBIDDEN',
+        message: 'You do not have permission to update this notification',
       });
     }
 
@@ -91,10 +80,7 @@ export class NotificationsService {
 
   async markAllAsRead(wallet: string): Promise<MarkAsReadResponseDto> {
     const now = new Date().toISOString();
-    const updatedCount = await this.notificationsRepository.markAllAsRead(
-      wallet,
-      now,
-    );
+    const updatedCount = await this.notificationsRepository.markAllAsRead(wallet, now);
 
     return { success: true, updatedCount };
   }

@@ -32,7 +32,9 @@ export class LiquidityContractClient {
     if (this.contractId) {
       this.logger.log(`Liquidity contract loaded: ${this.contractId.slice(0, 8)}...`);
     } else {
-      this.logger.warn('LIQUIDITY_POOL_CONTRACT_ID is not set - liquidity contract calls will fail');
+      this.logger.warn(
+        'LIQUIDITY_POOL_CONTRACT_ID is not set - liquidity contract calls will fail',
+      );
     }
   }
 
@@ -92,10 +94,12 @@ export class LiquidityContractClient {
         withdrawalFeeBps: await this.getWithdrawalFeeBps(),
       };
     } catch (error) {
-      this.logger.warn(`get_pool_stats unavailable, falling back to granular reads: ${error.message}`);
+      this.logger.warn(
+        `get_pool_stats unavailable, falling back to granular reads: ${error.message}`,
+      );
 
-      const [totalLiquidity, availableLiquidity, totalShares, withdrawalFeeBps] =
-        await Promise.all([
+      const [totalLiquidity, availableLiquidity, totalShares, withdrawalFeeBps] = await Promise.all(
+        [
           this.readBigInt(['get_total_liquidity', 'total_liquidity'], [], 'total liquidity'),
           this.readBigInt(
             ['get_available_liquidity', 'available_liquidity', 'liquid_assets'],
@@ -104,9 +108,11 @@ export class LiquidityContractClient {
           ),
           this.readBigInt(['get_total_shares', 'total_shares'], [], 'total shares'),
           this.getWithdrawalFeeBps(),
-        ]);
+        ],
+      );
 
-      const lockedLiquidity = totalLiquidity > availableLiquidity ? totalLiquidity - availableLiquidity : 0n;
+      const lockedLiquidity =
+        totalLiquidity > availableLiquidity ? totalLiquidity - availableLiquidity : 0n;
       const sharePrice = totalShares > 0n ? (totalLiquidity * SHARE_PRICE_BPS) / totalShares : 0n;
 
       return {
@@ -126,13 +132,11 @@ export class LiquidityContractClient {
     const sharesArg = StellarSdk.nativeToScVal(sharesInStroops, { type: 'i128' });
 
     try {
-      return await this.readBigInt(
-        ['calculate_withdrawal'],
-        [sharesArg],
-        'withdrawal preview',
-      );
+      return await this.readBigInt(['calculate_withdrawal'], [sharesArg], 'withdrawal preview');
     } catch (error) {
-      this.logger.warn(`calculate_withdrawal unavailable, falling back to share-price math: ${error.message}`);
+      this.logger.warn(
+        `calculate_withdrawal unavailable, falling back to share-price math: ${error.message}`,
+      );
       const stats = await this.getPoolStats();
       if (stats.totalShares <= 0n) {
         return 0n;
@@ -153,7 +157,9 @@ export class LiquidityContractClient {
         'deposit shares preview',
       );
     } catch (error) {
-      this.logger.warn(`calculate_deposit unavailable, falling back to share-price math: ${error.message}`);
+      this.logger.warn(
+        `calculate_deposit unavailable, falling back to share-price math: ${error.message}`,
+      );
       const stats = await this.getPoolStats();
       if (stats.totalShares <= 0n || stats.totalLiquidity <= 0n) {
         // First deposit: 1:1 ratio
@@ -300,7 +306,11 @@ export class LiquidityContractClient {
 
     for (const method of methods) {
       try {
-        const result = await this.sorobanService.simulateContractCall(this.contractId, method, args);
+        const result = await this.sorobanService.simulateContractCall(
+          this.contractId,
+          method,
+          args,
+        );
         return this.toBigInt(StellarSdk.scValToNative(result));
       } catch (error) {
         lastError = error;

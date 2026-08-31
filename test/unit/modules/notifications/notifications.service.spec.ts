@@ -19,9 +19,7 @@ function createQueryBuilder<T>(result: SupabaseResult<T>) {
     update: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue(result),
     maybeSingle: jest.fn().mockResolvedValue(result),
-    then: jest.fn((resolve, reject) =>
-      Promise.resolve(result).then(resolve, reject),
-    ),
+    then: jest.fn((resolve, reject) => Promise.resolve(result).then(resolve, reject)),
   };
 
   return query;
@@ -235,9 +233,7 @@ describe('NotificationsService', () => {
       });
       mockClientWithQueries(listQuery, unreadCountQuery);
 
-      await expect(service.getNotifications(wallet, {})).rejects.toThrow(
-        'list failed',
-      );
+      await expect(service.getNotifications(wallet, {})).rejects.toThrow('list failed');
     });
 
     it('throws when unread count calculation fails', async () => {
@@ -253,9 +249,7 @@ describe('NotificationsService', () => {
       });
       mockClientWithQueries(listQuery, unreadCountQuery);
 
-      await expect(service.getNotifications(wallet, {})).rejects.toThrow(
-        'count failed',
-      );
+      await expect(service.getNotifications(wallet, {})).rejects.toThrow('count failed');
     });
   });
 
@@ -270,9 +264,7 @@ describe('NotificationsService', () => {
 
       const result = await service.markAsRead(wallet, 'notification-1');
 
-      expect(fetchQuery.select).toHaveBeenCalledWith(
-        'id, user_wallet, is_read',
-      );
+      expect(fetchQuery.select).toHaveBeenCalledWith('id, user_wallet, is_read');
       expect(fetchQuery.eq).toHaveBeenCalledWith('id', 'notification-1');
       expect(updateQuery.update).toHaveBeenCalledWith({
         is_read: true,
@@ -306,9 +298,9 @@ describe('NotificationsService', () => {
       });
       mockClientWithQueries(fetchQuery);
 
-      await expect(
-        service.markAsRead(wallet, 'notification-1'),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.markAsRead(wallet, 'notification-1')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws NotFoundException for non-existent notification IDs', async () => {
@@ -318,9 +310,9 @@ describe('NotificationsService', () => {
       });
       mockClientWithQueries(fetchQuery);
 
-      await expect(
-        service.markAsRead(wallet, 'missing-notification'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.markAsRead(wallet, 'missing-notification')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws when updating an unread notification fails', async () => {
@@ -333,9 +325,7 @@ describe('NotificationsService', () => {
       });
       mockClientWithQueries(fetchQuery, updateQuery);
 
-      await expect(
-        service.markAsRead(wallet, 'notification-1'),
-      ).rejects.toThrow('update failed');
+      await expect(service.markAsRead(wallet, 'notification-1')).rejects.toThrow('update failed');
     });
   });
 
@@ -379,9 +369,7 @@ describe('NotificationsService', () => {
       });
       mockClientWithQueries(updateQuery);
 
-      await expect(service.markAllAsRead(wallet)).rejects.toThrow(
-        'bulk update failed',
-      );
+      await expect(service.markAllAsRead(wallet)).rejects.toThrow('bulk update failed');
     });
   });
 });

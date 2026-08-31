@@ -1,13 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { z } from 'zod';
 
-export const RefreshTokenSchema = z.object({
-  refreshToken: z
-    .string({
-      required_error: 'Refresh token is required',
-    })
-    .min(1, 'Refresh token cannot be empty'),
-}).strict();
+export const RefreshTokenSchema = z
+  .object({
+    refreshToken: z
+      .string({
+        required_error: 'Refresh token is required',
+      })
+      .min(1, 'Refresh token cannot be empty'),
+  })
+  .strict();
 
 /**
  * DTO for JWT refresh token request payload (used in POST /auth/refresh and DELETE /auth/logout).

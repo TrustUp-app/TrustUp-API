@@ -123,7 +123,10 @@ describe('TransactionStatusCheckerProcessor', () => {
     });
 
     it('should leave the loan untouched if it is no longer pending', async () => {
-      const tx = createPendingTransactionFixture({ type: 'loan_create', xdr: CREATE_LOAN_XDR_FIXTURE });
+      const tx = createPendingTransactionFixture({
+        type: 'loan_create',
+        xdr: CREATE_LOAN_XDR_FIXTURE,
+      });
 
       mockTransactionsRepository.findPending.mockResolvedValue([
         {

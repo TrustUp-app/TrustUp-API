@@ -6,32 +6,32 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * `updatedAt` instead of `createdAt`.
  */
 export class UpdateUserProfileDto {
-    @ApiProperty({
-        description: 'Stellar wallet address',
-        example: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW',
-    })
-    wallet: string;
+  @ApiProperty({
+    description: 'Stellar wallet address',
+    example: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW',
+  })
+  wallet: string;
 
-    @ApiPropertyOptional({ description: 'Display name', example: 'Maria Garcia', nullable: true })
-    name: string | null;
+  @ApiPropertyOptional({ description: 'Display name', example: 'Maria Garcia', nullable: true })
+  name: string | null;
 
-    @ApiPropertyOptional({
-        description: 'Avatar URL (HTTPS)',
-        example: 'https://example.com/avatar.jpg',
-        nullable: true,
-    })
-    avatar: string | null;
+  @ApiPropertyOptional({
+    description: 'Avatar URL (HTTPS)',
+    example: 'https://example.com/avatar.jpg',
+    nullable: true,
+  })
+  avatar: string | null;
 
-    @ApiProperty({
-        description: 'User preferences',
-        example: { notifications: true, theme: 'dark', language: 'en' },
-    })
-    preferences: {
-        notifications: boolean;
-        theme: string;
-        language: string;
-    };
+  @ApiProperty({
+    description: 'User preferences',
+    example: { notifications: true, theme: 'dark', language: 'en' },
+  })
+  preferences: {
+    notifications: boolean;
+    theme: string;
+    language: string;
+  };
 
-    @ApiProperty({ example: '2026-02-20T10:00:00.000Z' })
-    updatedAt: string;
+  @ApiProperty({ example: '2026-02-20T10:00:00.000Z' })
+  updatedAt: string;
 }

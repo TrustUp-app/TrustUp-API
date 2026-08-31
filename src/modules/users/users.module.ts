@@ -11,8 +11,8 @@ import { SupabaseService } from '../../database/supabase.client';
  * (created in API-03) and is resolved from there by NestJS's DI container.
  */
 @Module({
-    controllers: [UsersController],
-    providers: [UsersService, UsersRepository, SupabaseService],
-    exports: [UsersService],
+  controllers: [UsersController],
+  providers: [UsersService, UsersRepository, SupabaseService],
+  exports: [UsersService],
 })
-export class UsersModule { }
+export class UsersModule {}

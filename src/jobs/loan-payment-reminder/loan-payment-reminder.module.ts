@@ -6,14 +6,7 @@ import { LoanPaymentReminderProcessor } from './loan-payment-reminder.processor'
 import { SupabaseService } from '../../database/supabase.client';
 
 @Module({
-  imports: [
-    ConfigModule,
-    BullModule.registerQueue({ name: 'payment-reminders' }),
-  ],
-  providers: [
-    LoanPaymentReminderService,
-    LoanPaymentReminderProcessor,
-    SupabaseService,
-  ],
+  imports: [ConfigModule, BullModule.registerQueue({ name: 'payment-reminders' })],
+  providers: [LoanPaymentReminderService, LoanPaymentReminderProcessor, SupabaseService],
 })
 export class LoanPaymentReminderModule {}

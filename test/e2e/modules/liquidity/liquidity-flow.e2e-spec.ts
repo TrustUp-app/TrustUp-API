@@ -84,6 +84,15 @@ describe('Liquidity Operations Flow (e2e)', () => {
   }
 
   function createSupabasePositionsQuery() {
+    const singleResult = () => ({
+      data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
+      error: state.totalInvested > 0 ? null : { message: 'not found' },
+    });
+    const maybeSingleResult = () => ({
+      data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
+      error: null,
+    });
+
     return {
       select: jest.fn((columns?: string, options?: { count?: string; head?: boolean }) => {
         if (options?.head) {
@@ -93,20 +102,16 @@ describe('Liquidity Operations Flow (e2e)', () => {
         if (columns === 'deposited_amount') {
           return {
             eq: jest.fn().mockReturnThis(),
-            single: jest.fn().mockResolvedValue({
-              data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
-              error: state.totalInvested > 0 ? null : { message: 'not found' },
-            }),
+            single: jest.fn().mockResolvedValue(singleResult()),
+            maybeSingle: jest.fn().mockResolvedValue(maybeSingleResult()),
           };
         }
 
         return Promise.resolve({ data: [], error: null });
       }),
       eq: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({
-        data: state.totalInvested > 0 ? { deposited_amount: state.totalInvested } : null,
-        error: state.totalInvested > 0 ? null : { message: 'not found' },
-      }),
+      single: jest.fn().mockResolvedValue(singleResult()),
+      maybeSingle: jest.fn().mockResolvedValue(maybeSingleResult()),
     };
   }
 
@@ -189,37 +194,44 @@ describe('Liquidity Operations Flow (e2e)', () => {
       lockedLiquidity: state.lockedLiquidity,
       availableLiquidity: state.availableLiquidity,
       totalShares: state.totalShares,
-      sharePrice: state.totalShares > 0n ? (state.totalLiquidity * 10000n) / state.totalShares : 10000n,
+      sharePrice:
+        state.totalShares > 0n ? (state.totalLiquidity * 10000n) / state.totalShares : 10000n,
       withdrawalFeeBps: state.withdrawalFeeBps,
     }));
 
-    mockLiquidityContractClient.calculateDeposit.mockImplementation(async (amountInStroops: bigint) => {
-      const shares =
-        state.totalShares <= 0n || state.totalLiquidity <= 0n
-          ? amountInStroops
-          : (amountInStroops * state.totalShares) / state.totalLiquidity;
+    mockLiquidityContractClient.calculateDeposit.mockImplementation(
+      async (amountInStroops: bigint) => {
+        const shares =
+          state.totalShares <= 0n || state.totalLiquidity <= 0n
+            ? amountInStroops
+            : (amountInStroops * state.totalShares) / state.totalLiquidity;
 
-      state.pendingDepositAmount = amountInStroops;
-      state.pendingDepositShares = shares;
-      return shares;
-    });
+        state.pendingDepositAmount = amountInStroops;
+        state.pendingDepositShares = shares;
+        return shares;
+      },
+    );
 
     mockLiquidityContractClient.buildDepositTx.mockResolvedValue('AAAAAgDEPOSIT...');
 
     mockLiquidityContractClient.getLpShares.mockImplementation(async () => state.userShares);
 
-    mockLiquidityContractClient.calculateWithdrawal.mockImplementation(async (sharesInStroops: bigint) => {
-      if (state.totalShares <= 0n) {
-        return 0n;
-      }
+    mockLiquidityContractClient.calculateWithdrawal.mockImplementation(
+      async (sharesInStroops: bigint) => {
+        if (state.totalShares <= 0n) {
+          return 0n;
+        }
 
-      return (sharesInStroops * state.totalLiquidity) / state.totalShares;
-    });
+        return (sharesInStroops * state.totalLiquidity) / state.totalShares;
+      },
+    );
 
-    mockLiquidityContractClient.buildWithdrawTx.mockImplementation(async (_wallet, sharesInStroops: bigint) => {
-      state.pendingWithdrawShares = sharesInStroops;
-      return 'AAAAAgWITHDRAW...';
-    });
+    mockLiquidityContractClient.buildWithdrawTx.mockImplementation(
+      async (_wallet, sharesInStroops: bigint) => {
+        state.pendingWithdrawShares = sharesInStroops;
+        return 'AAAAAgWITHDRAW...';
+      },
+    );
 
     mockTransactionsService.submitTransaction.mockImplementation(async (_wallet, dto) => {
       state.submittedTxCount += 1;
@@ -228,9 +240,12 @@ describe('Liquidity Operations Flow (e2e)', () => {
       state.txByHash.set(hash, {
         type: dto.type,
         status: 'pending',
-        depositAmount: dto.type === TransactionType.DEPOSIT ? state.pendingDepositAmount : undefined,
-        depositShares: dto.type === TransactionType.DEPOSIT ? state.pendingDepositShares : undefined,
-        withdrawShares: dto.type === TransactionType.WITHDRAW ? state.pendingWithdrawShares : undefined,
+        depositAmount:
+          dto.type === TransactionType.DEPOSIT ? state.pendingDepositAmount : undefined,
+        depositShares:
+          dto.type === TransactionType.DEPOSIT ? state.pendingDepositShares : undefined,
+        withdrawShares:
+          dto.type === TransactionType.WITHDRAW ? state.pendingWithdrawShares : undefined,
       });
 
       return { transactionHash: hash, status: 'pending' };
@@ -254,7 +269,9 @@ describe('Liquidity Operations Flow (e2e)', () => {
 
       if (tx.type === TransactionType.WITHDRAW && tx.withdrawShares) {
         const gross =
-          state.totalShares > 0n ? (tx.withdrawShares * state.totalLiquidity) / state.totalShares : 0n;
+          state.totalShares > 0n
+            ? (tx.withdrawShares * state.totalLiquidity) / state.totalShares
+            : 0n;
         state.totalLiquidity -= gross;
         state.availableLiquidity -= gross;
         state.totalShares -= tx.withdrawShares;

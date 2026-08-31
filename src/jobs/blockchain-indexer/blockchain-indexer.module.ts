@@ -8,10 +8,7 @@ import { SupabaseService } from '../../database/supabase.client';
 import { SorobanService } from '../../blockchain/soroban/soroban.service';
 
 @Module({
-  imports: [
-    ConfigModule,
-    BullModule.registerQueue({ name: 'blockchain-indexer' }),
-  ],
+  imports: [ConfigModule, BullModule.registerQueue({ name: 'blockchain-indexer' })],
   providers: [
     BlockchainIndexerService,
     BlockchainIndexerProcessor,

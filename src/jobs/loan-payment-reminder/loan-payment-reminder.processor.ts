@@ -172,7 +172,9 @@ export class LoanPaymentReminderProcessor extends WorkerHost {
 
     const { data, error } = await db
       .from('loans')
-      .select('id, loan_id, user_wallet, merchant_id, amount, loan_amount, next_payment_due, remaining_balance, term')
+      .select(
+        'id, loan_id, user_wallet, merchant_id, amount, loan_amount, next_payment_due, remaining_balance, term',
+      )
       .eq('status', 'active')
       .not('next_payment_due', 'is', null);
 

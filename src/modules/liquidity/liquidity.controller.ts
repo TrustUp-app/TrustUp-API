@@ -8,13 +8,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-  ApiHeader,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiHeader } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { LiquidityService } from './liquidity.service';
 import { InvestmentSummaryResponseDto } from './dto/investment-summary-response.dto';
@@ -46,8 +40,15 @@ export class LiquidityController {
     description: 'Pool overview metrics retrieved successfully',
     type: PoolOverviewResponseDto,
   })
-  @ApiResponse({ status: 503, description: 'Liquidity contract temporarily unavailable or fallback data used' })
-  async getPoolOverview(): Promise<{ success: boolean; data: PoolOverviewResponseDto; message: string }> {
+  @ApiResponse({
+    status: 503,
+    description: 'Liquidity contract temporarily unavailable or fallback data used',
+  })
+  async getPoolOverview(): Promise<{
+    success: boolean;
+    data: PoolOverviewResponseDto;
+    message: string;
+  }> {
     const data = await this.liquidityService.getPoolOverview();
     return { success: true, data, message: 'Pool overview retrieved successfully' };
   }
@@ -58,7 +59,7 @@ export class LiquidityController {
   @ApiOperation({
     summary: 'Get personal investment summary',
     description:
-      'Returns a comprehensive summary of the authenticated user\'s liquidity pool investment, including share balance, current value, earnings, APY, pool size, and active loan count. Data is cached in Redis with a 1-minute TTL. Users with no investment receive a valid zero-value response.',
+      "Returns a comprehensive summary of the authenticated user's liquidity pool investment, including share balance, current value, earnings, APY, pool size, and active loan count. Data is cached in Redis with a 1-minute TTL. Users with no investment receive a valid zero-value response.",
   })
   @ApiResponse({
     status: 200,
@@ -94,7 +95,11 @@ export class LiquidityController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID v4 key used to safely replay this request for 24 hours.',
+  })
   @ApiOperation({
     summary: 'Construct a liquidity pool deposit transaction',
     description:
@@ -126,7 +131,11 @@ export class LiquidityController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiBearerAuth()
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 key used to safely replay this request for 24 hours.' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID v4 key used to safely replay this request for 24 hours.',
+  })
   @ApiOperation({
     summary: 'Construct a liquidity withdrawal transaction',
     description:

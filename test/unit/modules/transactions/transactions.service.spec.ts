@@ -256,8 +256,7 @@ describe('TransactionsService', () => {
       result: null,
       error: {
         code: 'tx_failed',
-        message:
-          'Insufficient balance to complete one or more operations in this transaction.',
+        message: 'Insufficient balance to complete one or more operations in this transaction.',
         operationCodes: ['op_underfunded'],
       },
       submittedAt: '2026-03-23T05:15:00.000Z',
@@ -289,11 +288,17 @@ describe('TransactionsService', () => {
 
     it('throws BadRequestException with TRANSACTION_INVALID_XDR when XDR is malformed', async () => {
       await expect(
-        service.submitTransaction(validWallet, { xdr: 'not-valid-xdr', type: 'deposit' as TransactionType }),
+        service.submitTransaction(validWallet, {
+          xdr: 'not-valid-xdr',
+          type: 'deposit' as TransactionType,
+        }),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.submitTransaction(validWallet, { xdr: 'not-valid-xdr', type: 'deposit' as TransactionType }),
+        service.submitTransaction(validWallet, {
+          xdr: 'not-valid-xdr',
+          type: 'deposit' as TransactionType,
+        }),
       ).rejects.toMatchObject({ response: { code: 'TRANSACTION_INVALID_XDR' } });
     });
 
@@ -303,7 +308,10 @@ describe('TransactionsService', () => {
       );
 
       await expect(
-        service.submitTransaction(validWallet, { xdr: buildValidXdr(), type: 'deposit' as TransactionType }),
+        service.submitTransaction(validWallet, {
+          xdr: buildValidXdr(),
+          type: 'deposit' as TransactionType,
+        }),
       ).rejects.toMatchObject({
         response: { code: 'STELLAR_TX_BAD_AUTH' },
       });
@@ -315,7 +323,10 @@ describe('TransactionsService', () => {
       );
 
       await expect(
-        service.submitTransaction(validWallet, { xdr: buildValidXdr(), type: 'deposit' as TransactionType }),
+        service.submitTransaction(validWallet, {
+          xdr: buildValidXdr(),
+          type: 'deposit' as TransactionType,
+        }),
       ).rejects.toMatchObject({
         response: { code: 'STELLAR_TRANSACTION_FAILED' },
       });
@@ -325,7 +336,10 @@ describe('TransactionsService', () => {
       mockStellarService.submitTransaction.mockRejectedValue(new Error('network timeout'));
 
       await expect(
-        service.submitTransaction(validWallet, { xdr: buildValidXdr(), type: 'deposit' as TransactionType }),
+        service.submitTransaction(validWallet, {
+          xdr: buildValidXdr(),
+          type: 'deposit' as TransactionType,
+        }),
       ).rejects.toThrow(ServiceUnavailableException);
     });
 
@@ -333,7 +347,10 @@ describe('TransactionsService', () => {
       mockStellarService.submitTransaction.mockRejectedValue(new Error('something unexpected'));
 
       await expect(
-        service.submitTransaction(validWallet, { xdr: buildValidXdr(), type: 'deposit' as TransactionType }),
+        service.submitTransaction(validWallet, {
+          xdr: buildValidXdr(),
+          type: 'deposit' as TransactionType,
+        }),
       ).rejects.toThrow(InternalServerErrorException);
     });
   });

@@ -102,7 +102,9 @@ describe('WebhookDispatchService', () => {
     });
     await service.enqueueLoanStatusChange(transition);
 
-    const defaultedDeliveries = deliveries.filter((d) => d.event_id.startsWith('loan-1:active:defaulted'));
+    const defaultedDeliveries = deliveries.filter((d) =>
+      d.event_id.startsWith('loan-1:active:defaulted'),
+    );
     expect(defaultedDeliveries).toHaveLength(2);
     expect(defaultedDeliveries.map((d) => d.event_id)).toEqual([
       'loan-1:active:defaulted',

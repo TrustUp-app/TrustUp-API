@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { InternalServerErrorException, ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  InternalServerErrorException,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../../../../src/modules/auth/auth.service';
@@ -259,7 +263,7 @@ describe('AuthService', () => {
     });
 
     it('should mark nonce as used after successful verification', async () => {
-      const { } = setupMocks();
+      const {} = setupMocks();
       await service.verifySignature(validDto);
 
       expect(mockFrom).toHaveBeenCalledWith('nonces');
@@ -388,7 +392,9 @@ describe('AuthService', () => {
           const chain: Record<string, jest.Mock> = {
             upsert: jest.fn(),
             select: jest.fn(),
-            single: jest.fn().mockResolvedValue({ data: { id: 'user-uuid', status: 'active' }, error: null }),
+            single: jest
+              .fn()
+              .mockResolvedValue({ data: { id: 'user-uuid', status: 'active' }, error: null }),
           };
           chain.upsert.mockReturnValue(chain);
           chain.select.mockReturnValue(chain);

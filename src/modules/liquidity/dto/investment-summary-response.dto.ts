@@ -2,13 +2,14 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class InvestmentSummaryResponseDto {
   @ApiProperty({
-    description: 'Total amount the user has deposited into the pool over their lifetime (historical)',
+    description:
+      'Total amount the user has deposited into the pool over their lifetime (historical)',
     example: 1000.0,
   })
   totalInvested: number;
 
   @ApiProperty({
-    description: 'Current market value of the user\'s shares in the pool',
+    description: "Current market value of the user's shares in the pool",
     example: 1085.5,
   })
   currentValue: number;
@@ -44,7 +45,7 @@ export class InvestmentSummaryResponseDto {
   activeLoans: number;
 
   @ApiProperty({
-    description: 'User\'s current share balance in the pool',
+    description: "User's current share balance in the pool",
     example: 950.123456,
   })
   shares: number;

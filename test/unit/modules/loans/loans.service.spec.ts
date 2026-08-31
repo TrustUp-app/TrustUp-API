@@ -284,7 +284,10 @@ describe('LoansService', () => {
     it('should reject an existing pending loan with the same XDR hash', async () => {
       mockReputation(75, 'silver', 8, 2000);
       mockMerchantFound();
-      mockSupabaseFrom.maybeSingle.mockResolvedValue({ data: { id: 'existing-loan' }, error: null });
+      mockSupabaseFrom.maybeSingle.mockResolvedValue({
+        data: { id: 'existing-loan' },
+        error: null,
+      });
 
       await expect(service.createLoan(validWallet, baseDto)).rejects.toMatchObject({
         response: { code: 'LOAN_DUPLICATE_PENDING' },
@@ -296,11 +299,11 @@ describe('LoansService', () => {
       mockReputation(59, 'poor', 12, 500);
       mockMerchantFound();
 
-      await expect(service.createLoan(validWallet, { ...baseDto, amount: 200 })).rejects.toMatchObject(
-        {
-          response: { code: 'LOAN_REPUTATION_TOO_LOW' },
-        },
-      );
+      await expect(
+        service.createLoan(validWallet, { ...baseDto, amount: 200 }),
+      ).rejects.toMatchObject({
+        response: { code: 'LOAN_REPUTATION_TOO_LOW' },
+      });
     });
 
     it('should throw InternalServerErrorException when XDR construction fails', async () => {

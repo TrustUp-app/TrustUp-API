@@ -3,10 +3,10 @@ import { redisStore } from 'cache-manager-redis-store';
 
 /**
  * Configuration factory for the TrustUp API Cache layer.
- * 
+ *
  * Uses 'cache-manager-redis-store' (v3 compatible with Nest 10).
  * Defaults to localhost:6379 for local development.
- * 
+ *
  * TTL: Time to live in seconds (default: 300 - 5 minutes)
  */
 export const getRedisConfig = async (configService: ConfigService): Promise<any> => {
@@ -31,7 +31,10 @@ export const getRedisConfig = async (configService: ConfigService): Promise<any>
       ttl,
     };
   } catch (error) {
-    console.warn('Failed to initialize Redis store, falling back to in-memory cache:', error.message);
+    console.warn(
+      'Failed to initialize Redis store, falling back to in-memory cache:',
+      error.message,
+    );
     return {
       ttl,
     };

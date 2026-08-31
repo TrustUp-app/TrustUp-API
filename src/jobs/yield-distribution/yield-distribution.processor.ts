@@ -10,7 +10,7 @@ export function shareOfPool(shares: number, totalShares: number, poolYield: numb
   if (shares <= 0 || totalShares <= 0 || poolYield <= 0) {
     return 0;
   }
-  return Math.round(((shares / totalShares) * poolYield) * 1e7) / 1e7;
+  return Math.round((shares / totalShares) * poolYield * 1e7) / 1e7;
 }
 
 /** Interest not yet credited to LPs. Checkpoint is loans.distributed_interest. */
