@@ -37,11 +37,6 @@ Desktop.ini
 *.sublime-project
 
 # IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
 
 # Environment
 .env
@@ -86,3 +81,7 @@ pnpm-lock.yaml
 *.pid
 *.seed
 *.pid.lock
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
