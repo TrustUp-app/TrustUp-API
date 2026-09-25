@@ -201,6 +201,8 @@ npm run test:e2e
 npm run test:cov
 ```
 
+E2E specs boot real feature modules (not mocks), so they need a Supabase project — plus Redis for the queue-backed specs. See the [E2E Testing Guide](./docs/setup/e2e-testing.md) for prerequisites, single-flow commands, isolation rules, and how to run the suite in CI.
+
 ## 📚 Documentation
 
 Comprehensive documentation is organized into the following categories:
@@ -216,6 +218,7 @@ Comprehensive documentation is organized into the following categories:
 - [Installation Guide](./docs/setup/installation.md) - Step-by-step setup instructions
 - [Environment Variables](./docs/setup/environment-variables.md) - Configuration reference
 - [Supabase Setup](./docs/setup/supabase-setup.md) - Database setup guide
+- [E2E Testing Guide](./docs/setup/e2e-testing.md) - Running and extending the end-to-end suite
 
 ### 💻 Development
 

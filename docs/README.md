@@ -32,6 +32,9 @@ Get up and running with the TrustUp API.
 - **[Supabase Setup](./setup/supabase-setup.md)**
   Database setup, migrations, and Supabase configuration
 
+- **[E2E Testing Guide](./setup/e2e-testing.md)**
+  Running the end-to-end suite, prerequisites, isolation rules, and CI opt-in
+
 ---
 
 ### 💻 Development
@@ -127,7 +130,8 @@ docs/
 ├── setup/                              # Setup guides
 │   ├── installation.md                 # Installation instructions
 │   ├── environment-variables.md        # Configuration reference
-│   └── supabase-setup.md               # Database setup
+│   ├── supabase-setup.md               # Database setup
+│   └── e2e-testing.md                  # End-to-end test runbook
 ├── development/                        # Development standards
 │   ├── naming-conventions.md           # Code style
 │   ├── controllers-structure.md        # Controller patterns
