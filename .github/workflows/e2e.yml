@@ -1,0 +1,69 @@
+name: E2E
+
+# The e2e suite boots real Nest feature modules instead of mocks, so it needs a
+# Supabase project and (for the queue-backed specs) Redis — see
+# docs/setup/e2e-testing.md. It is therefore opt-in: run it from the Actions tab,
+# or add the `run-e2e` label to a pull request. The default CI workflow stays
+# fast and dependency-free.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-e2e'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      JWT_SECRET: e2e-jwt-secret
+      JWT_REFRESH_SECRET: e2e-jwt-refresh-secret
+      REDIS_URL: redis://127.0.0.1:6379
+      SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check E2E secrets
+        id: secrets
+        run: |
+          if [ -z "${SUPABASE_URL}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=E2E skipped::Set the E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY / E2E_SUPABASE_SERVICE_ROLE_KEY repository secrets to enable this job."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run e2e suite
+        if: steps.secrets.outputs.configured == 'true'
+        run: npm run test:e2e -- --runInBand
