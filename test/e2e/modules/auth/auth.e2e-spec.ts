@@ -511,7 +511,82 @@ describe('AuthController (e2e)', () => {
         .set('Authorization', `Bearer ${response.body.accessToken}`)
         .expect(200);
 
-      // Verify the old refresh token is rotated (deleted) and no longer works
+      // Verify the old refresh token is rotated (revoked) and no longer works
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
+    });
+
+    it('POST /auth/refresh - should detect stolen-token replay and revoke the whole family', async () => {
+      // Legitimate client rotates: old token is now marked rotated, new one issued.
+      const rotation = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      const rotatedRefreshToken = rotation.body.refreshToken;
+
+      // Attacker replays the stolen (already-rotated) token.
+      const replay = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+
+      expect(replay.body.code).toBe('AUTH_TOKEN_REUSE_DETECTED');
+
+      // Family revocation must invalidate the legitimate rotated token too.
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: rotatedRefreshToken })
+        .expect(401);
+    });
+
+    it('GET /auth/sessions - should list active sessions for the current user', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBeGreaterThanOrEqual(1);
+      expect(response.body[0]).toHaveProperty('id');
+      expect(response.body[0]).not.toHaveProperty('refresh_token_hash');
+      expect(response.body[0]).not.toHaveProperty('refreshTokenHash');
+    });
+
+    it('GET /auth/sessions - should return 401 without an access token', async () => {
+      await request(app.getHttpServer()).get('/auth/sessions').expect(401);
+    });
+
+    it('DELETE /auth/sessions/:id - should revoke a specific session', async () => {
+      const list = await request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const sessionId = list.body[0].id;
+
+      await request(app.getHttpServer())
+        .delete(`/auth/sessions/${sessionId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(204);
+
+      // The revoked session's refresh token no longer works.
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
+    });
+
+    it('DELETE /auth/sessions/:id - should return 404 for an unknown session', async () => {
+      await request(app.getHttpServer())
+        .delete('/auth/sessions/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    });
+
+    it('DELETE /auth/sessions - should log out from all devices', async () => {
+      await request(app.getHttpServer())
+        .delete('/auth/sessions')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(204);
+
+      // All refresh tokens are revoked.
       await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
 
