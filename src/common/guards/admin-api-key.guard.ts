@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { timingSafeEqualString } from '../utils/timing-safe';
 
 @Injectable()
 export class AdminApiKeyGuard implements CanActivate {
@@ -21,7 +22,7 @@ export class AdminApiKeyGuard implements CanActivate {
     }
     const request = context.switchToHttp().getRequest();
     const provided = request.headers['x-admin-key'];
-    if (provided !== expected) {
+    if (typeof provided !== 'string' || !timingSafeEqualString(provided, expected)) {
       throw new ForbiddenException({
         code: 'ADMIN_FORBIDDEN',
         message: 'Invalid admin API key.',
