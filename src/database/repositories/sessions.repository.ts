@@ -120,7 +120,70 @@ export class SessionsRepository extends BaseRepository {
   }
 
   /**
-   * Updates an existing session by ID (used for atomic token rotation).
+   * Marks a single session as revoked (used for logout of a specific device).
+   */
+  async revokeById(id: string): Promise<void> {
+    const { error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('id', id);
+
+    this.throwOnError(error);
+  }
+
+  /**
+   * Revokes every active session belonging to a user ("logout all devices").
+   */
+  async revokeAllForUser(userId: string): Promise<void> {
+    const { error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .is('revoked_at', null);
+
+    this.throwOnError(error);
+  }
+
+  /**
+   * Lists the active (non-revoked, non-expired) sessions for a user.
+   * The refresh token hash is intentionally never returned to callers.
+   */
+  async findActiveByUserId(userId: string): Promise<SessionRecord[]> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .select(
+        'id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at, token_family, revoked_at',
+      )
+      .eq('user_id', userId)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
+
+    this.throwOnError(error);
+    return data ?? [];
+  }
+
+  /**
+   * Marks a session as rotated/used by revoking it. Rotation inserts a brand
+   * new session row (see `create`) and revokes the previous one instead of
+   * overwriting its hash, so a replayed old token still resolves to a row and
+   * can trigger family revocation.
+   */
+  async markRotated(id: string): Promise<void> {
+    const { error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('id', id);
+
+    this.throwOnError(error);
+  }
+
+  /**
+   * Updates an existing session by ID.
    */
   async update(
     id: string,
