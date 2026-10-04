@@ -1,4 +1,5 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
+import { timingSafeEqualString } from '../../common/utils/timing-safe';
 
 export const WEBHOOK_SIGNATURE_HEADER = 'x-trustup-signature';
 export const WEBHOOK_EVENT_HEADER = 'x-trustup-event';
@@ -18,11 +19,5 @@ export function verifySignature(secret: string, rawBody: string, header: string)
   if (!header || !secret) {
     return false;
   }
-  const expected = signPayload(secret, rawBody);
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) {
-    return false;
-  }
-  return timingSafeEqual(a, b);
+  return timingSafeEqualString(header, signPayload(secret, rawBody));
 }
