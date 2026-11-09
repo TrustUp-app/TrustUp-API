@@ -106,41 +106,94 @@ export class SessionsRepository extends BaseRepository {
   }
 
   /**
-   * Revokes all sessions belonging to the given token family.
-   * This is used to invalidate the family if a reused refresh token is detected.
+   * Revokes all still-active sessions belonging to the given token family.
+   * This is used to invalidate the family if a reused refresh token is detected,
+   * and to end a single device's session (one family = one login/device).
+   * Rows that are already revoked/rotated keep their original `revoked_at`.
    */
   async revokeFamily(tokenFamily: string): Promise<void> {
     const { error } = await this.supabaseService
       .getServiceRoleClient()
       .from('sessions')
       .update({ revoked_at: new Date().toISOString() })
-      .eq('token_family', tokenFamily);
+      .eq('token_family', tokenFamily)
+      .is('revoked_at', null);
 
     this.throwOnError(error);
   }
 
   /**
-   * Updates an existing session by ID (used for atomic token rotation).
+   * Marks a session as rotated (consumed) by setting `revoked_at`, but only if
+   * it is still active. The row is kept so that a later replay of its refresh
+   * token is detected as reuse.
+   *
+   * The conditional update makes rotation atomic: when two requests race with the
+   * same refresh token, only one of them can claim the row.
+   *
+   * @returns true if this call claimed the session, false if it was already revoked
    */
-  async update(
-    id: string,
-    updateData: {
-      refreshTokenHash: string;
-      expiresAt: string;
-    },
-  ): Promise<SessionRecord> {
+  async markRotated(id: string): Promise<boolean> {
     const { data, error } = await this.supabaseService
       .getServiceRoleClient()
       .from('sessions')
-      .update({
-        refresh_token_hash: updateData.refreshTokenHash,
-        expires_at: updateData.expiresAt,
-      })
+      .update({ revoked_at: new Date().toISOString() })
       .eq('id', id)
-      .select('*')
-      .single();
+      .is('revoked_at', null)
+      .select('id');
+
+    this.throwOnError(error);
+    return Array.isArray(data) && data.length > 0;
+  }
+
+  /**
+   * Lists the active (not revoked, not expired) sessions of a user,
+   * most recently created first. Each row represents one device/login.
+   */
+  async findActiveByUserId(userId: string): Promise<SessionRecord[]> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .select(
+        'id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at, token_family, revoked_at',
+      )
+      .eq('user_id', userId)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
+
+    this.throwOnError(error);
+    return data ?? [];
+  }
+
+  /**
+   * Finds a session by ID, scoped to the given user.
+   */
+  async findByIdForUser(id: string, userId: string): Promise<SessionRecord | null> {
+    const { data, error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .select(
+        'id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at, token_family, revoked_at',
+      )
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
 
     this.throwOnError(error);
     return data;
+  }
+
+  /**
+   * Revokes every active session of a user ("log out from all devices").
+   */
+  async revokeAllForUser(userId: string): Promise<void> {
+    const { error } = await this.supabaseService
+      .getServiceRoleClient()
+      .from('sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .is('revoked_at', null);
+
+    this.throwOnError(error);
   }
 }
