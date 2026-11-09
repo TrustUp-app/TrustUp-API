@@ -559,5 +559,213 @@ describe('AuthController (e2e)', () => {
         .send({ refreshToken: invalidToken })
         .expect(401);
     });
+
+    it('POST /auth/refresh - should keep the rotated session row instead of overwriting it', async () => {
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(200);
+
+      const client = supabaseService.getServiceRoleClient();
+      const { data: user } = await client
+        .from('users')
+        .select('id')
+        .eq('wallet_address', wallet)
+        .single();
+      const { data: sessions } = await client
+        .from('sessions')
+        .select('token_family, revoked_at')
+        .eq('user_id', user.id);
+
+      expect(sessions).toHaveLength(2);
+      expect(new Set(sessions.map((s) => s.token_family)).size).toBe(1);
+      expect(sessions.filter((s) => s.revoked_at === null)).toHaveLength(1);
+    });
+
+    it('stolen refresh token replay - should revoke the whole token family', async () => {
+      // Legitimate client rotates its token
+      const rotated = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+      const legitimateRefreshToken = rotated.body.refreshToken;
+
+      // Attacker replays the old (stolen) refresh token → reuse detected
+      const replay = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+      expect(JSON.stringify(replay.body)).toContain('AUTH_TOKEN_REVOKED');
+
+      // The legitimate client's newest token has been revoked too
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: legitimateRefreshToken })
+        .expect(401);
+    });
+
+    it('stolen refresh token replay - attacker token is revoked when the victim refreshes afterwards', async () => {
+      // Attacker uses the stolen token first
+      const attacker = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      // Victim presents the same (now rotated) token → reuse detected
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
+
+      // The attacker's freshly issued refresh token no longer works
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: attacker.body.refreshToken })
+        .expect(401);
+    });
+
+    it('token reuse in one session should not affect other devices', async () => {
+      // Second device logs in
+      const nonceResponse = await request(app.getHttpServer())
+        .post('/auth/nonce')
+        .send({ wallet })
+        .expect(201);
+      const nonce = nonceResponse.body.nonce;
+      const secondDevice = await request(app.getHttpServer())
+        .post('/auth/verify')
+        .send({ wallet, nonce, signature: signMessage(keypair, nonce) })
+        .expect(200);
+
+      // Reuse on the first device
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(200);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
+
+      // Second device keeps working
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: secondDevice.body.refreshToken })
+        .expect(200);
+    });
+  });
+
+  describe('Session Management (E2E)', () => {
+    let wallet: string;
+    let keypair: any;
+
+    async function login(userAgent: string) {
+      const nonceResponse = await request(app.getHttpServer())
+        .post('/auth/nonce')
+        .send({ wallet })
+        .expect(201);
+      const nonce = nonceResponse.body.nonce;
+      const response = await request(app.getHttpServer())
+        .post('/auth/verify')
+        .set('User-Agent', userAgent)
+        .send({ wallet, nonce, signature: signMessage(keypair, nonce) })
+        .expect(200);
+      return response.body as { accessToken: string; refreshToken: string };
+    }
+
+    beforeEach(() => {
+      keypair = createTestKeypair();
+      wallet = keypair.publicKey();
+      testWallets.push(wallet);
+    });
+
+    it('GET /auth/sessions - should return 401 without an access token', async () => {
+      await request(app.getHttpServer()).get('/auth/sessions').expect(401);
+    });
+
+    it('GET /auth/sessions - should list one active session per device with device info', async () => {
+      const phone = await login('TrustUp-Test/Phone');
+      await login('TrustUp-Test/Laptop');
+
+      // Rotating a token must not add a second entry for the same device
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('User-Agent', 'TrustUp-Test/Phone')
+        .send({ refreshToken: phone.refreshToken })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveLength(2);
+      expect(response.body.map((s: any) => s.deviceInfo).sort()).toEqual([
+        'TrustUp-Test/Laptop',
+        'TrustUp-Test/Phone',
+      ]);
+      for (const session of response.body) {
+        expect(session).toHaveProperty('id');
+        expect(session).toHaveProperty('ipAddress');
+        expect(session).toHaveProperty('createdAt');
+        expect(session).toHaveProperty('expiresAt');
+        expect(session).not.toHaveProperty('refreshTokenHash');
+      }
+    });
+
+    it('DELETE /auth/sessions/:id - should revoke only that device', async () => {
+      const phone = await login('TrustUp-Test/Phone');
+      const laptop = await login('TrustUp-Test/Laptop');
+
+      const list = await request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(200);
+      const laptopSession = list.body.find((s: any) => s.deviceInfo === 'TrustUp-Test/Laptop');
+
+      await request(app.getHttpServer())
+        .delete(`/auth/sessions/${laptopSession.id}`)
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: laptop.refreshToken })
+        .expect(401);
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: phone.refreshToken })
+        .expect(200);
+    });
+
+    it('DELETE /auth/sessions/:id - should return 404 for an unknown session', async () => {
+      const phone = await login('TrustUp-Test/Phone');
+
+      await request(app.getHttpServer())
+        .delete('/auth/sessions/00000000-0000-4000-8000-000000000000')
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(404);
+    });
+
+    it('DELETE /auth/sessions/:id - should return 400 for a non-UUID id', async () => {
+      const phone = await login('TrustUp-Test/Phone');
+
+      await request(app.getHttpServer())
+        .delete('/auth/sessions/not-a-uuid')
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(400);
+    });
+
+    it('DELETE /auth/sessions - should log out from all devices', async () => {
+      const phone = await login('TrustUp-Test/Phone');
+      const laptop = await login('TrustUp-Test/Laptop');
+
+      await request(app.getHttpServer())
+        .delete('/auth/sessions')
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: phone.refreshToken })
+        .expect(401);
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: laptop.refreshToken })
+        .expect(401);
+
+      const list = await request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set('Authorization', `Bearer ${phone.accessToken}`)
+        .expect(200);
+      expect(list.body).toHaveLength(0);
+    });
   });
 });

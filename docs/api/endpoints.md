@@ -93,6 +93,45 @@ Refresh access token using refresh token.
 }
 ```
 
+**Rotation & reuse detection**: every refresh consumes the presented refresh token (its session row is kept and marked rotated) and issues a new one in the same token family. A refresh token can be used only once — presenting an already-rotated token returns `401 AUTH_TOKEN_REVOKED` and revokes every token of that session (device), so a stolen token cannot stay usable.
+
+---
+
+### GET /auth/sessions
+
+List the active sessions (one per logged-in device) of the current user.
+
+**Authentication**: Required
+
+**Response** (200 OK):
+```json
+[
+  {
+    "id": "3f1c2a9e-8b7d-4c2e-9f1a-1b2c3d4e5f60",
+    "deviceInfo": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    "ipAddress": "203.0.113.42",
+    "createdAt": "2026-02-13T10:00:00.000Z",
+    "expiresAt": "2026-02-20T10:00:00.000Z"
+  }
+]
+```
+
+---
+
+### DELETE /auth/sessions/:id
+
+Revoke one session/device of the current user. Returns `204 No Content`, `404` if the session does not belong to the user.
+
+**Authentication**: Required
+
+---
+
+### DELETE /auth/sessions
+
+Log out from all devices: revokes every session of the current user. Returns `204 No Content`. Access tokens already issued stay valid until they expire (15 min).
+
+**Authentication**: Required
+
 ---
 
 ## Phase 2: User Profile
