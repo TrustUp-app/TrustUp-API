@@ -37,19 +37,13 @@ Desktop.ini
 *.sublime-project
 
 # IDE - VSCode
-.vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
 
 # Environment
-.env
-.env.local
 .env.*.local
-.env.development
-.env.production
-.env.test
 
 # TypeScript
 *.tsbuildinfo
@@ -86,3 +80,4 @@ pnpm-lock.yaml
 *.pid
 *.seed
 *.pid.lock
+config.bat
