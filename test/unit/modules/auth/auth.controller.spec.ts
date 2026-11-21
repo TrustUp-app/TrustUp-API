@@ -21,6 +21,9 @@ describe('AuthController', () => {
     generateTokens: jest.fn().mockResolvedValue(expectedTokens),
     refreshTokens: jest.fn().mockResolvedValue(expectedTokens),
     logout: jest.fn().mockResolvedValue(undefined),
+    listSessions: jest.fn(),
+    revokeSession: jest.fn().mockResolvedValue(undefined),
+    revokeAllSessions: jest.fn().mockResolvedValue(undefined),
   };
 
   const validWallet = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
@@ -90,12 +93,16 @@ describe('AuthController', () => {
       expect(result.user.avatarUrl).toBe(
         'https://supabase.co/storage/v1/object/public/avatars/avatar.png',
       );
-      expect(authService.register).toHaveBeenCalledWith(registerDto, {
-        buffer: imageBuffer,
-        mimetype: 'image/png',
-        filename: 'avatar.png',
-        originalname: 'avatar.png',
-      });
+      expect(authService.register).toHaveBeenCalledWith(
+        registerDto,
+        {
+          buffer: imageBuffer,
+          mimetype: 'image/png',
+          filename: 'avatar.png',
+          originalname: 'avatar.png',
+        },
+        { deviceInfo: null, ipAddress: null },
+      );
     });
 
     it('should register successfully without a profile image (avatarUrl is null)', async () => {
@@ -121,7 +128,10 @@ describe('AuthController', () => {
 
       expect(result).toEqual(mockResponse);
       expect(result.user.avatarUrl).toBeNull();
-      expect(authService.register).toHaveBeenCalledWith(registerDto, undefined);
+      expect(authService.register).toHaveBeenCalledWith(registerDto, undefined, {
+        deviceInfo: null,
+        ipAddress: null,
+      });
     });
 
     it('should throw BadRequestException (400) with code FILE_INVALID_TYPE when file MIME type is invalid', async () => {
@@ -188,8 +198,19 @@ describe('AuthController', () => {
 
       expect(authService.verifySignature).toHaveBeenCalledWith(dto);
       expect(authService.verifySignature).toHaveBeenCalledTimes(1);
-      expect(authService.generateTokens).toHaveBeenCalledWith(validWallet);
+      expect(authService.generateTokens).toHaveBeenCalledWith(validWallet, {});
       expect(authService.generateTokens).toHaveBeenCalledTimes(1);
+    });
+
+    it('should pass the client User-Agent and IP to generateTokens', async () => {
+      const dto = { wallet: validWallet, nonce: validNonce, signature: validSignature };
+      const req = { headers: { 'user-agent': 'Mozilla/5.0 (Test)' }, ip: '203.0.113.42' } as any;
+      await controller.verify(dto, req);
+
+      expect(authService.generateTokens).toHaveBeenCalledWith(validWallet, {
+        deviceInfo: 'Mozilla/5.0 (Test)',
+        ipAddress: '203.0.113.42',
+      });
     });
   });
 
@@ -202,8 +223,19 @@ describe('AuthController', () => {
       const result = await controller.refresh(dto);
 
       expect(result).toEqual(expectedTokens);
-      expect(authService.refreshTokens).toHaveBeenCalledWith(dto.refreshToken);
+      expect(authService.refreshTokens).toHaveBeenCalledWith(dto.refreshToken, {});
       expect(authService.refreshTokens).toHaveBeenCalledTimes(1);
+    });
+
+    it('should pass the client User-Agent and IP to refreshTokens', async () => {
+      const dto = { refreshToken: 'valid.refresh.token' };
+      const req = { headers: { 'user-agent': 'Mozilla/5.0 (Test)' }, ip: '203.0.113.42' } as any;
+      await controller.refresh(dto, req);
+
+      expect(authService.refreshTokens).toHaveBeenCalledWith(dto.refreshToken, {
+        deviceInfo: 'Mozilla/5.0 (Test)',
+        ipAddress: '203.0.113.42',
+      });
     });
   });
 
@@ -218,6 +250,39 @@ describe('AuthController', () => {
       expect(result).toBeUndefined();
       expect(authService.logout).toHaveBeenCalledWith(dto.refreshToken);
       expect(authService.logout).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // /auth/sessions
+  // ---------------------------------------------------------------------------
+  describe('sessions', () => {
+    const user = { wallet: validWallet };
+
+    it('GET /auth/sessions should list sessions of the current user', async () => {
+      const sessions = [
+        {
+          id: 'session-1',
+          deviceInfo: 'Mozilla/5.0',
+          ipAddress: '203.0.113.42',
+          createdAt: '2026-02-13T10:00:00.000Z',
+          expiresAt: '2026-02-20T10:00:00.000Z',
+        },
+      ];
+      mockAuthService.listSessions.mockResolvedValue(sessions);
+
+      await expect(controller.listSessions(user)).resolves.toEqual(sessions);
+      expect(authService.listSessions).toHaveBeenCalledWith(validWallet);
+    });
+
+    it('DELETE /auth/sessions/:id should revoke the given session', async () => {
+      await expect(controller.revokeSession(user, 'session-1')).resolves.toBeUndefined();
+      expect(authService.revokeSession).toHaveBeenCalledWith(validWallet, 'session-1');
+    });
+
+    it('DELETE /auth/sessions should revoke all sessions of the current user', async () => {
+      await expect(controller.revokeAllSessions(user)).resolves.toBeUndefined();
+      expect(authService.revokeAllSessions).toHaveBeenCalledWith(validWallet);
     });
   });
 });

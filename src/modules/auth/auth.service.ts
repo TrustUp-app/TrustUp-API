@@ -3,6 +3,8 @@ import {
   InternalServerErrorException,
   UnauthorizedException,
   ConflictException,
+  NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -10,11 +12,12 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Keypair, StrKey } from 'stellar-sdk';
 import { SupabaseService } from '../../database/supabase.client';
 import { UsersRepository } from '../../database/repositories/users.repository';
-import { SessionsRepository } from '../../database/repositories/sessions.repository';
+import { SessionsRepository, SessionRecord } from '../../database/repositories/sessions.repository';
 import { NonceResponseDto } from './dto/nonce-response.dto';
 import { VerifyRequestDto } from './dto/verify-request.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { RegisterRequestDto } from './dto/register-request.dto';
+import { SessionResponseDto } from './dto/session-response.dto';
 import {
   ACCESS_TOKEN_EXPIRATION,
   ACCESS_TOKEN_EXPIRATION_SECONDS,
@@ -25,15 +28,29 @@ import {
 /** Nonce expiration time in seconds (5 minutes) */
 const NONCE_EXPIRATION_SECONDS = 300;
 
+/** Maximum stored length of the client's User-Agent string */
+const DEVICE_INFO_MAX_LENGTH = 512;
+
 interface RefreshTokenPayload {
   wallet: string;
   type: 'refresh';
+  jti?: string;
   iat?: number;
   exp?: number;
 }
 
+/**
+ * Client metadata recorded on a session so users can recognise their devices.
+ */
+export interface SessionClientInfo {
+  deviceInfo?: string | null;
+  ipAddress?: string | null;
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly jwtService: JwtService,
@@ -49,6 +66,7 @@ export class AuthService {
   async register(
     dto: RegisterRequestDto,
     profileImage?: { buffer: Buffer; mimetype: string; originalname?: string; filename?: string },
+    clientInfo?: SessionClientInfo,
   ): Promise<any> {
     // 1. Check if wallet address already exists
     const existingWallet = await this.usersRepository.findByWallet(dto.walletAddress);
@@ -83,7 +101,7 @@ export class AuthService {
     });
 
     // 5. Generate and return JWT tokens (this seamlessly re-uses existing session logic)
-    const tokens = await this.generateTokens(dto.walletAddress);
+    const tokens = await this.generateTokens(dto.walletAddress, clientInfo);
 
     return {
       user: {
@@ -244,20 +262,34 @@ export class AuthService {
 
   /**
    * Generates a signed JWT access token and refresh token for the given wallet,
-   * hashes the refresh token with SHA-256, and persists the session in the database.
+   * hashes the refresh token with SHA-256, and persists a new session (a new
+   * token family, i.e. a new device/login) in the database.
    *
    * Access token payload:  `{ wallet, type: 'access', iat, exp }`
-   * Refresh token payload: `{ wallet, type: 'refresh', iat, exp }`
+   * Refresh token payload: `{ wallet, type: 'refresh', jti, iat, exp }`
    * Refresh token hash: SHA-256 hex digest (per sessions table schema)
    *
    * Call verifySignature(dto) before this method to authenticate the wallet.
    *
    * @param wallet - Stellar wallet address (identity claim in JWT payload)
+   * @param clientInfo - Optional User-Agent / IP of the client, stored on the session
    * @returns Signed access token, refresh token, expiration, and token type
    */
-  async generateTokens(wallet: string): Promise<AuthResponseDto> {
+  async generateTokens(wallet: string, clientInfo?: SessionClientInfo): Promise<AuthResponseDto> {
     const userId = await this.findOrCreateUser(wallet);
+    return this.issueSession(wallet, userId, randomUUID(), clientInfo);
+  }
 
+  /**
+   * Signs a new access/refresh token pair and inserts a new session row for it
+   * in the given token family.
+   */
+  private async issueSession(
+    wallet: string,
+    userId: string,
+    tokenFamily: string,
+    clientInfo?: SessionClientInfo,
+  ): Promise<AuthResponseDto> {
     const accessToken = this.jwtService.sign(
       { wallet, type: 'access' },
       {
@@ -266,8 +298,10 @@ export class AuthService {
       },
     );
 
+    // A unique jti guarantees a unique token (and hash) even when two refresh
+    // tokens are issued for the same wallet within the same second.
     const refreshToken = this.jwtService.sign(
-      { wallet, type: 'refresh' },
+      { wallet, type: 'refresh', jti: randomUUID() },
       {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
         expiresIn: REFRESH_TOKEN_EXPIRATION,
@@ -275,15 +309,16 @@ export class AuthService {
     );
 
     // Hash refresh token with SHA-256 before storage (per sessions table schema)
-    const refreshTokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    const refreshTokenHash = this.hashToken(refreshToken);
     const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_MS);
-    const tokenFamily = randomUUID();
 
     await this.sessionsRepository.create({
       userId,
       refreshTokenHash,
       expiresAt: refreshExpiresAt.toISOString(),
       tokenFamily,
+      deviceInfo: clientInfo?.deviceInfo?.slice(0, DEVICE_INFO_MAX_LENGTH) || undefined,
+      ipAddress: clientInfo?.ipAddress || undefined,
     });
 
     return {
@@ -294,11 +329,22 @@ export class AuthService {
     };
   }
 
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   /**
-   * Refreshes access and refresh tokens using a valid refresh token.
-   * Invalidates the old refresh token by deleting it from the database (token rotation).
+   * Refreshes access and refresh tokens using a valid refresh token (token rotation).
+   *
+   * The presented session row is marked as rotated (`revoked_at` set) and a NEW
+   * session row is inserted in the same token family. The old row is kept, so if
+   * the old refresh token is ever presented again it is recognised as reuse and
+   * the entire family is revoked (stolen refresh token detection).
    */
-  async refreshTokens(refreshToken: string): Promise<AuthResponseDto> {
+  async refreshTokens(
+    refreshToken: string,
+    clientInfo?: SessionClientInfo,
+  ): Promise<AuthResponseDto> {
     let payload: RefreshTokenPayload;
     try {
       payload = await this.jwtService.verifyAsync(refreshToken, {
@@ -324,8 +370,7 @@ export class AuthService {
       });
     }
 
-    const hash = createHash('sha256').update(refreshToken).digest('hex');
-    const session = await this.sessionsRepository.findByHash(hash);
+    const session = await this.sessionsRepository.findByHash(this.hashToken(refreshToken));
 
     if (!session) {
       throw new UnauthorizedException({
@@ -335,12 +380,8 @@ export class AuthService {
     }
 
     if (session.revoked_at !== null) {
-      // Invalidate the entire token family (rotation attack detection)
-      await this.sessionsRepository.revokeFamily(session.token_family);
-      throw new UnauthorizedException({
-        code: 'AUTH_TOKEN_REVOKED',
-        message: 'Refresh token has been revoked.',
-      });
+      // An already-rotated (or revoked) token was replayed
+      await this.handleTokenReuse(session);
     }
 
     if (new Date(session.expires_at) < new Date()) {
@@ -355,7 +396,7 @@ export class AuthService {
     }
 
     const user = await this.usersRepository.findByWallet(payload.wallet);
-    if (!user) {
+    if (!user || user.id !== session.user_id) {
       throw new UnauthorizedException({
         code: 'AUTH_USER_NOT_FOUND',
         message: 'User associated with this token was not found.',
@@ -369,42 +410,40 @@ export class AuthService {
       });
     }
 
-    // Generate new tokens
-    const newAccessToken = this.jwtService.sign(
-      { wallet: user.wallet_address, type: 'access' },
-      {
-        secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: ACCESS_TOKEN_EXPIRATION,
-      },
-    );
+    // Rotate: atomically consume the presented session (kept as a rotated row,
+    // never overwritten). If a concurrent request already consumed it, the same
+    // token was presented twice — treat it as reuse.
+    const claimed = await this.sessionsRepository.markRotated(session.id);
+    if (!claimed) {
+      await this.handleTokenReuse(session);
+    }
 
-    const newRefreshToken = this.jwtService.sign(
-      { wallet: user.wallet_address, type: 'refresh' },
-      {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: REFRESH_TOKEN_EXPIRATION,
-      },
-    );
-
-    const newRefreshTokenHash = createHash('sha256').update(newRefreshToken).digest('hex');
-    const newRefreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_MS);
-
-    // Rotate: update the existing session to the new token hash/expiration atomically
-    await this.sessionsRepository.update(session.id, {
-      refreshTokenHash: newRefreshTokenHash,
-      expiresAt: newRefreshExpiresAt.toISOString(),
+    // Insert a new session row in the same family for the new refresh token
+    return this.issueSession(user.wallet_address, user.id, session.token_family, {
+      deviceInfo: clientInfo?.deviceInfo ?? session.device_info,
+      ipAddress: clientInfo?.ipAddress ?? session.ip_address,
     });
-
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      expiresIn: ACCESS_TOKEN_EXPIRATION_SECONDS,
-      tokenType: 'Bearer',
-    };
   }
 
   /**
-   * Explicitly logs out a user session by revoking (deleting) the refresh token.
+   * Called when an already-rotated or revoked refresh token is presented.
+   * Revokes every session in the token family and rejects the request.
+   */
+  private async handleTokenReuse(session: SessionRecord): Promise<never> {
+    this.logger.warn(
+      `Refresh token reuse detected (family ${session.token_family}, user ${session.user_id}); revoking token family`,
+    );
+    await this.sessionsRepository.revokeFamily(session.token_family);
+    throw new UnauthorizedException({
+      code: 'AUTH_TOKEN_REVOKED',
+      message: 'Refresh token has been revoked.',
+    });
+  }
+
+  /**
+   * Explicitly logs out a user session by revoking the session (token family) the
+   * refresh token belongs to. Rows are kept so a later replay of any token from
+   * this session is rejected.
    */
   async logout(refreshToken: string): Promise<void> {
     let payload: RefreshTokenPayload;
@@ -416,8 +455,7 @@ export class AuthService {
       if (error instanceof Error && error.name === 'TokenExpiredError') {
         const decoded = this.jwtService.decode(refreshToken) as RefreshTokenPayload | null;
         if (decoded && decoded.type === 'refresh') {
-          const hash = createHash('sha256').update(refreshToken).digest('hex');
-          await this.sessionsRepository.deleteByHash(hash);
+          await this.sessionsRepository.deleteByHash(this.hashToken(refreshToken));
         }
         return;
       }
@@ -434,7 +472,69 @@ export class AuthService {
       });
     }
 
-    const hash = createHash('sha256').update(refreshToken).digest('hex');
-    await this.sessionsRepository.deleteByHash(hash);
+    const session = await this.sessionsRepository.findByHash(this.hashToken(refreshToken));
+    if (session) {
+      await this.sessionsRepository.revokeFamily(session.token_family);
+    }
+  }
+
+  /**
+   * Lists the active sessions (one per device/login) of the authenticated user.
+   *
+   * @param wallet - Wallet address of the authenticated user (from the access token)
+   */
+  async listSessions(wallet: string): Promise<SessionResponseDto[]> {
+    const userId = await this.resolveUserId(wallet);
+    const sessions = await this.sessionsRepository.findActiveByUserId(userId);
+
+    return sessions.map((session) => ({
+      id: session.id,
+      deviceInfo: session.device_info,
+      ipAddress: session.ip_address,
+      createdAt: session.created_at,
+      expiresAt: session.expires_at,
+    }));
+  }
+
+  /**
+   * Revokes a single session/device of the authenticated user. The whole token
+   * family is revoked, so every refresh token issued for that device stops working.
+   *
+   * @param wallet - Wallet address of the authenticated user (from the access token)
+   * @param sessionId - Session ID as returned by GET /auth/sessions
+   */
+  async revokeSession(wallet: string, sessionId: string): Promise<void> {
+    const userId = await this.resolveUserId(wallet);
+    const session = await this.sessionsRepository.findByIdForUser(sessionId, userId);
+
+    if (!session) {
+      throw new NotFoundException({
+        code: 'AUTH_SESSION_NOT_FOUND',
+        message: 'Session not found.',
+      });
+    }
+
+    await this.sessionsRepository.revokeFamily(session.token_family);
+  }
+
+  /**
+   * Revokes every session of the authenticated user ("log out from all devices").
+   *
+   * @param wallet - Wallet address of the authenticated user (from the access token)
+   */
+  async revokeAllSessions(wallet: string): Promise<void> {
+    const userId = await this.resolveUserId(wallet);
+    await this.sessionsRepository.revokeAllForUser(userId);
+  }
+
+  private async resolveUserId(wallet: string): Promise<string> {
+    const user = await this.usersRepository.findByWallet(wallet);
+    if (!user) {
+      throw new UnauthorizedException({
+        code: 'AUTH_USER_NOT_FOUND',
+        message: 'User associated with this token was not found.',
+      });
+    }
+    return user.id;
   }
 }
